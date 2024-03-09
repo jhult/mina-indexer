@@ -14,10 +14,9 @@
 #![deny(warnings)]
 #![deny(missing_docs)]
 
-pub mod blockchain_state;
 pub mod bulletproof_challenges;
 pub mod common;
-pub mod consensus_state;
+mod consensus_state;
 pub mod delta_transition_chain_proof;
 pub mod epoch_data;
 pub mod errors;

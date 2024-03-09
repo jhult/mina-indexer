@@ -6,6 +6,7 @@ use crate::{
     command::{signed::SignedCommand, UserCommandWithStatus},
     constants::MAINNET_GENESIS_TIMESTAMP,
     ledger::{coinbase::Coinbase, public_key::PublicKey},
+    mina_blocks::v1::protocol_state::{consensus_state::ConsensusState, ProtocolState},
     protocol::serialization_types::{
         consensus_state as mina_consensus,
         protocol_state::{ProtocolState, ProtocolStateJson},
@@ -156,7 +157,7 @@ impl PrecomputedBlock {
             .collect()
     }
 
-    pub fn consensus_state(&self) -> mina_consensus::ConsensusState {
+    pub fn consensus_state(&self) -> ConsensusState {
         self.protocol_state
             .body
             .clone()
