@@ -28,7 +28,6 @@ pub async fn start_web_server<A: net::ToSocketAddrs, P: AsRef<Path>>(
     locked_supply: Option<P>,
 ) -> std::io::Result<()> {
     let locked = Arc::new(load_locked_balances(locked_supply));
-    let schema = build_schema(state.clone());
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(state.clone()))
@@ -40,7 +39,7 @@ pub async fn start_web_server<A: net::ToSocketAddrs, P: AsRef<Path>>(
             .service(
                 web::resource("/graphql")
                     .guard(guard::Post())
-                    .to(GraphQL::new(schema.clone())),
+                    .to(GraphQL::new(build_schema(state.clone()))),
             )
             .service(
                 web::resource("/graphql")
