@@ -1,0 +1,15 @@
+default_data_source_fetch_method = "ctx.data_unchecked::<DataSource>()"
+enum_rename_items = "camelCase"
+
+header = "use async_graphql::*; use crate::web::graphql::query_data::DataSource;"
+
+# we have no interfaces nor unions
+phases = ["objects", "input_objects", "scalars", "enums"]
+
+[[enum]]
+target_enum = "UserType"
+rename_items = "UPPERCASE"
+
+[[resolver]]
+target_type = "Query"
+target_field = "type"

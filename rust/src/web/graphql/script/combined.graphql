@@ -1,0 +1,174 @@
+query AccountActivityQuery($blocks_query: BlockQueryInput!, $blocks_limit: Int = 3, $blocks_sort_by: BlockSortByInput!, $snarks_sort_by: SnarkSortByInput!, $snarks_limit: Int = 3, $snarks_query: SnarkQueryInput!, $trans_limit: Int = 10, $trans_sort_by: TransactionSortByInput!, $outgoing_trans_query: TransactionQueryInput!,$incoming_trans_query: TransactionQueryInput!) {
+  incoming_transactions: transactions(sortBy: $trans_sort_by, limit: $trans_limit, query: $incoming_trans_query) {
+    fee
+    from
+    hash
+    to
+    amount
+    block {
+      dateTime
+    }
+  }
+  outgoing_transactions:transactions(sortBy: $trans_sort_by, limit: $trans_limit, query: $outgoing_trans_query) {
+    fee
+    from
+    hash
+    to
+    amount
+    block {
+      dateTime
+    }
+  }
+  snarks(sortBy: $snarks_sort_by, limit: $snarks_limit, query: $snarks_query) {
+    block {
+      stateHash
+    }
+    fee
+    dateTime
+  }
+  blocks(sortBy: $blocks_sort_by, limit: $blocks_limit, query: $blocks_query) {
+    stateHash
+    dateTime
+    transactions {
+      coinbase
+    }
+  }
+}
+query BlocksQuery($query: BlockQueryInput!, $limit: Int = 10, $sort_by: BlockSortByInput!) {
+  blocks(query: $query, limit: $limit, sortBy: $sort_by) {
+    blockHeight
+    dateTime
+    stateHash
+    canonical
+    transactions {
+      coinbase
+      coinbaseReceiverAccount {
+        publicKey
+      }
+      userCommands {
+        id
+        from 
+        to
+        hash 
+        fee 
+        amount
+      }
+      feeTransfer {
+        type
+        fee
+        recipient
+      }
+    }
+    creatorAccount {
+      publicKey
+    }
+    snarkJobs {
+      prover
+      workIds
+      blockStateHash
+      blockHeight
+      fee
+      dateTime
+    }
+    protocolState {
+      previousStateHash
+      blockchainState {
+        snarkedLedgerHash
+        stagedLedgerHash
+      }
+      consensusState {
+        epoch
+        slotSinceGenesis
+        slot
+        totalCurrency
+      }
+    }
+    winnerAccount {
+      publicKey
+      balance {
+        total
+      }
+    }
+    snarkFees
+    txFees
+  }
+}
+query FeeTransfersQuery ($sort_by: FeetransferSortByInput!, $limit: Int = 10, $query: FeetransferQueryInput!) {
+  feetransfers(sortBy: $sort_by, limit: $limit, query: $query ) {
+    fee
+    recipient
+    type
+    dateTime
+  }
+}
+query NextStakesQuery ($limit: Int = 10, $sort_by: NextstakeSortByInput!, $query: NextstakeQueryInput!) {
+  nextstakes(limit: $limit, sortBy: $sort_by, query: $query ) {
+    balance
+    delegate
+    ledgerHash
+    nonce
+    pk
+    public_key
+    receipt_chain_hash
+    token
+    voting_for
+    nextDelegationTotals {
+      countDelegates
+      totalDelegated
+    }
+  }
+}
+query SnarksQuery($sort_by: SnarkSortByInput!, $limit: Int = 10, $query: SnarkQueryInput!) {
+  snarks(sortBy: $sort_by, limit: $limit, query: $query ) {
+    blockHeight
+    dateTime
+    prover
+    canonical
+    workIds
+    block {
+      stateHash
+    }
+    fee
+  }
+}query StakesQuery($limit: Int = 10, $sort_by: StakeSortByInput!, $query: StakeQueryInput!) {
+  stakes(limit: $limit, sortBy: $sort_by, query: $query ) {
+    balance
+    chainId
+    delegate
+    epoch
+    ledgerHash
+    nonce
+    pk
+    public_key
+    receipt_chain_hash
+    token
+    voting_for
+    delegationTotals {
+      countDelegates
+      totalDelegated
+    }
+  }
+}
+query TransactionsQuery($limit: Int = 10, $sort_by: TransactionSortByInput!, $query: TransactionQueryInput!) {
+  transactions(limit: $limit, sortBy: $sort_by, query: $query ) {
+    blockHeight
+    failureReason
+    canonical
+    amount
+    fee
+    kind
+    id
+    to
+    from
+    nonce
+    memo
+    hash
+    block {
+      dateTime
+      stateHash
+    }
+    receiver {
+      publicKey
+    }
+  }
+}

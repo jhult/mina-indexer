@@ -1,0 +1,172 @@
+input BlockQueryInput {
+  creator_nin: [String]
+  stateHash_lte: String
+  canonical_ne: Boolean
+  dateTime_lt: DateTime
+  snarkJobs: [BlockSnarkJobQueryInput]
+  creator_ne: String
+  receivedTime: DateTime
+  blockHeight_lte: Int
+  stateHashField_gte: String
+  receivedTime_in: [DateTime]
+  blockHeight: Int
+  stateHashField_exists: Boolean
+  blockHeight_nin: [Int]
+  creator_gt: String
+  stateHash_gte: String
+  stateHash_lt: String
+  creator_gte: String
+  protocolState: BlockProtocolStateQueryInput
+  canonical_exists: Boolean
+  dateTime_nin: [DateTime]
+  creator_lte: String
+  creatorAccount: BlockCreatorAccountQueryInput
+  stateHashField_lt: String
+  creator_in: [String]
+  stateHash_ne: String
+  receivedTime_ne: DateTime
+  creator: String
+  stateHashField_lte: String
+  dateTime_lte: DateTime
+  dateTime_exists: Boolean
+  stateHashField_gt: String
+  dateTime: DateTime
+  dateTime_gt: DateTime
+  winnerAccount_exists: Boolean
+  receivedTime_gte: DateTime
+  protocolState_exists: Boolean
+  stateHash_exists: Boolean
+  canonical: Boolean
+  creator_exists: Boolean
+  receivedTime_lte: DateTime
+  blockHeight_exists: Boolean
+  stateHashField_ne: String
+  winnerAccount: BlockWinnerAccountQueryInput
+  OR: [BlockQueryInput!]
+  stateHashField: String
+  receivedTime_lt: DateTime
+  transactions: BlockTransactionQueryInput
+  dateTime_gte: DateTime
+  AND: [BlockQueryInput!]
+  creatorAccount_exists: Boolean
+  blockHeight_in: [Int]
+  receivedTime_nin: [DateTime]
+  snarkJobs_nin: [BlockSnarkJobQueryInput]
+  dateTime_in: [DateTime]
+  snarkJobs_in: [BlockSnarkJobQueryInput]
+  blockHeight_lt: Int
+  stateHashField_in: [String]
+  blockHeight_ne: Int
+  transactions_exists: Boolean
+  creator_lt: String
+  receivedTime_exists: Boolean
+  blockHeight_gt: Int
+  stateHash_nin: [String]
+  stateHashField_nin: [String]
+  dateTime_ne: DateTime
+  stateHash_in: [String]
+  stateHash: String
+  blockHeight_gte: Int
+  receivedTime_gt: DateTime
+  snarkJobs_exists: Boolean
+  stateHash_gt: String
+}
+
+enum BlockSortByInput {
+  DATETIME_ASC
+  RECEIVEDTIME_DESC
+  STATEHASHFIELD_ASC
+  STATEHASHFIELD_DESC
+  CREATOR_ASC
+  BLOCKHEIGHT_DESC
+  CREATOR_DESC
+  DATETIME_DESC
+  RECEIVEDTIME_ASC
+  STATEHASH_ASC
+  STATEHASH_DESC
+  BLOCKHEIGHT_ASC
+}
+
+enum NextstakeSortByInput {
+  BALANCE_DESC
+  DELEGATE_ASC
+  NONCE_DESC
+  RECEIPT_CHAIN_HASH_ASC
+  NONCE_ASC
+  PUBLIC_KEY_DESC
+  RECEIPT_CHAIN_HASH_DESC
+  TOKEN_ASC
+  BALANCE_ASC
+  PUBLIC_KEY_ASC
+  TOKEN_DESC
+  VOTING_FOR_DESC
+  DELEGATE_DESC
+  LEDGERHASH_ASC
+  LEDGERHASH_DESC
+  PK_ASC
+  PK_DESC
+  VOTING_FOR_ASC
+}
+
+enum SnarkSortByInput {
+  PROVER_ASC
+  BLOCKHEIGHT_ASC
+  BLOCKSTATEHASH_DESC
+  DATETIME_ASC
+  DATETIME_DESC
+  FEE_ASC
+  FEE_DESC
+  BLOCKHEIGHT_DESC
+  BLOCKSTATEHASH_ASC
+  PROVER_DESC
+}
+
+input SnarkQueryInput {
+  blockHeight_lt: Int
+  fee_in: [Float]
+  prover_gte: String
+  fee_lt: Float
+  dateTime_nin: [DateTime]
+  prover_in: [String]
+  prover_ne: String
+  blockHeight_gt: Int
+  prover: String
+  block_exists: Boolean
+  dateTime_lte: DateTime
+  dateTime: DateTime
+  fee_gt: Float
+  dateTime_exists: Boolean
+  workIds_exists: Boolean
+  prover_lte: String
+  dateTime_in: [DateTime]
+  blockHeight_nin: [Int]
+  fee_exists: Boolean
+  canonical: Boolean
+  canonical_ne: Boolean
+  dateTime_gt: DateTime
+  blockHeight_exists: Boolean
+  block: BlockQueryInput
+  blockHeight_ne: Int
+  blockHeight_gte: Int
+  workIds_in: [Int]
+  fee: Float
+  fee_gte: Float
+  prover_nin: [String]
+  AND: [SnarkQueryInput!]
+  prover_exists: Boolean
+  OR: [SnarkQueryInput!]
+  dateTime_ne: DateTime
+  workIds: [Int]
+  dateTime_lt: DateTime
+  blockHeight_in: [Int]
+  fee_nin: [Float]
+  workIds_nin: [Int]
+  prover_lt: String
+  prover_gt: String
+  blockHeight_lte: Int
+  fee_lte: Float
+  dateTime_gte: DateTime
+  fee_ne: Float
+  blockHeight: Int
+  canonical_exists: Boolean
+}

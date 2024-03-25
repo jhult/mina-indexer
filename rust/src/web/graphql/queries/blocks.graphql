@@ -1,0 +1,59 @@
+query BlocksQuery($query: BlockQueryInput!, $limit: Int = 10, $sort_by: BlockSortByInput!) {
+  blocks(query: $query, limit: $limit, sortBy: $sort_by) {
+    blockHeight
+    dateTime
+    stateHash
+    canonical
+    transactions {
+      coinbase
+      coinbaseReceiverAccount {
+        publicKey
+      }
+      userCommands {
+        id
+        from 
+        to
+        hash 
+        fee 
+        amount
+      }
+      feeTransfer {
+        type
+        fee
+        recipient
+      }
+    }
+    creatorAccount {
+      publicKey
+    }
+    snarkJobs {
+      prover
+      workIds
+      blockStateHash
+      blockHeight
+      fee
+      dateTime
+    }
+    protocolState {
+      previousStateHash
+      blockchainState {
+        snarkedLedgerHash
+        stagedLedgerHash
+      }
+      consensusState {
+        epoch
+        slotSinceGenesis
+        slot
+        totalCurrency
+      }
+    }
+    winnerAccount {
+      publicKey
+      balance {
+        total
+      }
+    }
+    snarkFees
+    txFees
+  }
+}

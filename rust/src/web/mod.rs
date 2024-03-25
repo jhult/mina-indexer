@@ -2,7 +2,7 @@ pub mod graphql;
 pub mod rest;
 
 use self::{
-    graphql::{blocks::build_schema, index_graphiql},
+    graphql::{build_schema, graphiql, ENDPOINT_GRAPHQL},
     rest::{accounts, blockchain, blocks, locked_balances::LockedBalances},
 };
 use crate::store::IndexerStore;
@@ -37,14 +37,14 @@ pub async fn start_web_server<A: net::ToSocketAddrs, P: AsRef<Path>>(
             .service(accounts::get_account)
             .service(blockchain::get_blockchain_summary)
             .service(
-                web::resource("/graphql")
+                web::resource(ENDPOINT_GRAPHQL)
                     .guard(guard::Post())
                     .to(GraphQL::new(build_schema(state.clone()))),
             )
             .service(
-                web::resource("/graphql")
+                web::resource(ENDPOINT_GRAPHQL)
                     .guard(guard::Get())
-                    .to(index_graphiql),
+                    .to(graphiql),
             )
             .wrap(Cors::permissive())
             .wrap(middleware::Logger::default())
