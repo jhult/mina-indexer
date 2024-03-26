@@ -65,8 +65,8 @@ type StakeTiming {
 }
 
 type NextDelegationTotal {
-  countDelegates: Int
-  totalDelegated: Float
+  countDelegates: Int!
+  totalDelegated: Float!
 }
 
 input TransactionFromAccountQueryInput {
@@ -542,8 +542,8 @@ input BlockTransactionUserCommandFeePayerUpdateInput {
 }
 
 type DelegationTotal {
-  countDelegates: Int
-  totalDelegated: Float
+  countDelegates: Int!
+  totalDelegated: Float!
 }
 
 input BlockTransactionQueryInput {
@@ -746,20 +746,20 @@ input BlockProtocolStateConsensusStateNextEpochDatumLedgerUpdateInput {
 }
 
 type Stake {
-  balance: Float
-  chainId: String
-  delegate: String
-  delegationTotals: DelegationTotal
-  epoch: Int
-  ledgerHash: String
-  nonce: Int
+  balance: Float!
+  chainId: String!
+  delegate: String!
+  delegationTotals: DelegationTotal!
+  epoch: Int!
+  ledgerHash: String!
+  nonce: Int!
   permissions: StakePermission
   pk: String
-  public_key: String
-  receipt_chain_hash: String
+  public_key: String!
+  receipt_chain_hash: String!
   timing: StakeTiming
-  token: Int
-  voting_for: String
+  token: Int!
+  voting_for: String!
 }
 
 input BlockTransactionUserCommandInsertInput {

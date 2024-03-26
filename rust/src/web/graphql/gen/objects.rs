@@ -121,15 +121,15 @@ impl StakeTiming {
 }
 #[derive(Debug, Clone)]
 pub struct NextDelegationTotal {
-    pub count_delegates: Option<i64>,
-    pub total_delegated: Option<f64>,
+    pub count_delegates: i64,
+    pub total_delegated: f64,
 }
 #[Object]
 impl NextDelegationTotal {
-    pub async fn count_delegates(&self) -> Option<i64> {
+    pub async fn count_delegates(&self) -> i64 {
         self.count_delegates
     }
-    pub async fn total_delegated(&self) -> Option<f64> {
+    pub async fn total_delegated(&self) -> f64 {
         self.total_delegated
     }
 }
@@ -289,15 +289,15 @@ impl BlockTransactionUserCommand {
 }
 #[derive(Debug, Clone)]
 pub struct DelegationTotal {
-    pub count_delegates: Option<i64>,
-    pub total_delegated: Option<f64>,
+    pub count_delegates: i64,
+    pub total_delegated: f64,
 }
 #[Object]
 impl DelegationTotal {
-    pub async fn count_delegates(&self) -> Option<i64> {
+    pub async fn count_delegates(&self) -> i64 {
         self.count_delegates
     }
-    pub async fn total_delegated(&self) -> Option<f64> {
+    pub async fn total_delegated(&self) -> f64 {
         self.total_delegated
     }
 }
@@ -338,41 +338,41 @@ impl InsertManyPayload {
 }
 #[derive(Debug, Clone)]
 pub struct Stake {
-    pub balance: Option<f64>,
-    pub chain_id: Option<String>,
-    pub delegate: Option<String>,
-    pub epoch: Option<i64>,
-    pub ledger_hash: Option<String>,
-    pub nonce: Option<i64>,
+    pub balance: f64,
+    pub chain_id: String,
+    pub delegate: String,
+    pub epoch: i64,
+    pub ledger_hash: String,
+    pub nonce: i64,
     pub pk: Option<String>,
-    pub public_key: Option<String>,
-    pub receipt_chain_hash: Option<String>,
-    pub token: Option<i64>,
-    pub voting_for: Option<String>,
+    pub public_key: String,
+    pub receipt_chain_hash: String,
+    pub token: i64,
+    pub voting_for: String,
 }
 #[Object]
 impl Stake {
-    pub async fn balance(&self) -> Option<f64> {
+    pub async fn balance(&self) -> f64 {
         self.balance
     }
-    pub async fn chain_id(&self) -> Option<String> {
+    pub async fn chain_id(&self) -> String {
         self.chain_id.clone()
     }
-    pub async fn delegate(&self) -> Option<String> {
+    pub async fn delegate(&self) -> String {
         self.delegate.clone()
     }
-    pub async fn delegation_totals(&self, ctx: &Context<'_>) -> Result<Option<DelegationTotal>> {
+    pub async fn delegation_totals(&self, ctx: &Context<'_>) -> Result<DelegationTotal> {
         ctx.data_unchecked::<DataSource>()
             .stake_delegation_totals(ctx, self)
             .await
     }
-    pub async fn epoch(&self) -> Option<i64> {
+    pub async fn epoch(&self) -> i64 {
         self.epoch
     }
-    pub async fn ledger_hash(&self) -> Option<String> {
+    pub async fn ledger_hash(&self) -> String {
         self.ledger_hash.clone()
     }
-    pub async fn nonce(&self) -> Option<i64> {
+    pub async fn nonce(&self) -> i64 {
         self.nonce
     }
     pub async fn permissions(&self, ctx: &Context<'_>) -> Result<Option<StakePermission>> {
@@ -383,10 +383,10 @@ impl Stake {
     pub async fn pk(&self) -> Option<String> {
         self.pk.clone()
     }
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
-    pub async fn receipt_chain_hash(&self) -> Option<String> {
+    pub async fn receipt_chain_hash(&self) -> String {
         self.receipt_chain_hash.clone()
     }
     pub async fn timing(&self, ctx: &Context<'_>) -> Result<Option<StakeTiming>> {
@@ -394,10 +394,10 @@ impl Stake {
             .stake_timing(ctx, self)
             .await
     }
-    pub async fn token(&self) -> Option<i64> {
+    pub async fn token(&self) -> i64 {
         self.token
     }
-    pub async fn voting_for(&self) -> Option<String> {
+    pub async fn voting_for(&self) -> String {
         self.voting_for.clone()
     }
 }
