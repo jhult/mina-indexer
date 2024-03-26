@@ -1,3 +1,8 @@
 schema {
   query: Query
 }
+
+type TransactionBlock {
+  dateTime: DateTime!
+  stateHash: String!
+}
