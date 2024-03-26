@@ -15,19 +15,19 @@ use crate::web::graphql::query_implementations::DataSource;
 use async_graphql::*;
 #[derive(Debug, Clone)]
 pub struct BlockTransactionFeeTransfer {
-    pub fee: Option<String>,
-    pub recipient: Option<String>,
-    pub r#type: Option<String>,
+    pub fee: String,
+    pub recipient: String,
+    pub r#type: String,
 }
 #[Object]
 impl BlockTransactionFeeTransfer {
-    pub async fn fee(&self) -> Option<String> {
+    pub async fn fee(&self) -> String {
         self.fee.clone()
     }
-    pub async fn recipient(&self) -> Option<String> {
+    pub async fn recipient(&self) -> String {
         self.recipient.clone()
     }
-    pub async fn r#type(&self) -> Option<String> {
+    pub async fn r#type(&self) -> String {
         self.r#type.clone()
     }
 }
@@ -44,8 +44,8 @@ impl TransactionFromAccount {
 #[derive(Debug, Clone)]
 pub struct BlockProtocolStateBlockchainState {
     pub date: Option<Long>,
-    pub snarked_ledger_hash: Option<String>,
-    pub staged_ledger_hash: Option<String>,
+    pub snarked_ledger_hash: String,
+    pub staged_ledger_hash: String,
     pub utc_date: Option<Long>,
 }
 #[Object]
@@ -53,10 +53,10 @@ impl BlockProtocolStateBlockchainState {
     pub async fn date(&self) -> Option<Long> {
         self.date.clone()
     }
-    pub async fn snarked_ledger_hash(&self) -> Option<String> {
+    pub async fn snarked_ledger_hash(&self) -> String {
         self.snarked_ledger_hash.clone()
     }
-    pub async fn staged_ledger_hash(&self) -> Option<String> {
+    pub async fn staged_ledger_hash(&self) -> String {
         self.staged_ledger_hash.clone()
     }
     pub async fn utc_date(&self) -> Option<Long> {
@@ -135,17 +135,17 @@ impl NextDelegationTotal {
 }
 #[derive(Debug, Clone)]
 pub struct BlockTransaction {
-    pub coinbase: Option<String>,
+    pub coinbase: String,
 }
 #[Object]
 impl BlockTransaction {
-    pub async fn coinbase(&self) -> Option<String> {
+    pub async fn coinbase(&self) -> String {
         self.coinbase.clone()
     }
     pub async fn coinbase_receiver_account(
         &self,
         ctx: &Context<'_>,
-    ) -> Result<Option<BlockTransactionCoinbaseReceiverAccount>> {
+    ) -> Result<BlockTransactionCoinbaseReceiverAccount> {
         ctx.data_unchecked::<DataSource>()
             .block_transaction_coinbase_receiver_account(ctx, self)
             .await
@@ -153,7 +153,7 @@ impl BlockTransaction {
     pub async fn fee_transfer(
         &self,
         ctx: &Context<'_>,
-    ) -> Result<Option<Vec<Option<BlockTransactionFeeTransfer>>>> {
+    ) -> Result<Vec<Option<BlockTransactionFeeTransfer>>> {
         ctx.data_unchecked::<DataSource>()
             .block_transaction_fee_transfer(ctx, self)
             .await
@@ -161,7 +161,7 @@ impl BlockTransaction {
     pub async fn user_commands(
         &self,
         ctx: &Context<'_>,
-    ) -> Result<Option<Vec<Option<BlockTransactionUserCommand>>>> {
+    ) -> Result<Vec<Option<BlockTransactionUserCommand>>> {
         ctx.data_unchecked::<DataSource>()
             .block_transaction_user_commands(ctx, self)
             .await
@@ -169,36 +169,36 @@ impl BlockTransaction {
 }
 #[derive(Debug, Clone)]
 pub struct BlockTransactionCoinbaseReceiverAccount {
-    pub public_key: Option<String>,
+    pub public_key: String,
 }
 #[Object]
 impl BlockTransactionCoinbaseReceiverAccount {
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
 }
 #[derive(Debug, Clone)]
 pub struct BlockTransactionUserCommand {
-    pub amount: Option<f64>,
+    pub amount: f64,
     pub block_height: Option<i64>,
     pub block_state_hash: Option<String>,
     pub date_time: Option<DateTime>,
     pub failure_reason: Option<String>,
-    pub fee: Option<f64>,
+    pub fee: f64,
     pub fee_token: Option<i64>,
-    pub from: Option<String>,
-    pub hash: Option<String>,
-    pub id: Option<String>,
+    pub from: String,
+    pub hash: String,
+    pub id: String,
     pub is_delegation: Option<bool>,
     pub kind: Option<String>,
     pub memo: Option<String>,
     pub nonce: Option<i64>,
-    pub to: Option<String>,
+    pub to: String,
     pub token: Option<i64>,
 }
 #[Object]
 impl BlockTransactionUserCommand {
-    pub async fn amount(&self) -> Option<f64> {
+    pub async fn amount(&self) -> f64 {
         self.amount
     }
     pub async fn block_height(&self) -> Option<i64> {
@@ -213,7 +213,7 @@ impl BlockTransactionUserCommand {
     pub async fn failure_reason(&self) -> Option<String> {
         self.failure_reason.clone()
     }
-    pub async fn fee(&self) -> Option<f64> {
+    pub async fn fee(&self) -> f64 {
         self.fee
     }
     pub async fn fee_payer(
@@ -227,7 +227,7 @@ impl BlockTransactionUserCommand {
     pub async fn fee_token(&self) -> Option<i64> {
         self.fee_token
     }
-    pub async fn from(&self) -> Option<String> {
+    pub async fn from(&self) -> String {
         self.from.clone()
     }
     pub async fn from_account(
@@ -238,10 +238,10 @@ impl BlockTransactionUserCommand {
             .block_transaction_user_command_from_account(ctx, self)
             .await
     }
-    pub async fn hash(&self) -> Option<String> {
+    pub async fn hash(&self) -> String {
         self.hash.clone()
     }
-    pub async fn id(&self) -> Option<String> {
+    pub async fn id(&self) -> String {
         self.id.clone()
     }
     pub async fn is_delegation(&self) -> Option<bool> {
@@ -272,7 +272,7 @@ impl BlockTransactionUserCommand {
             .block_transaction_user_command_source(ctx, self)
             .await
     }
-    pub async fn to(&self) -> Option<String> {
+    pub async fn to(&self) -> String {
         self.to.clone()
     }
     pub async fn to_account(
@@ -303,16 +303,16 @@ impl DelegationTotal {
 }
 #[derive(Debug, Clone)]
 pub struct BlockWinnerAccount {
-    pub public_key: Option<String>,
+    pub public_key: String,
 }
 #[Object]
 impl BlockWinnerAccount {
-    pub async fn balance(&self, ctx: &Context<'_>) -> Result<Option<BlockWinnerAccountBalance>> {
+    pub async fn balance(&self, ctx: &Context<'_>) -> Result<BlockWinnerAccountBalance> {
         ctx.data_unchecked::<DataSource>()
             .block_winner_account_balance(ctx, self)
             .await
     }
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
 }
@@ -555,11 +555,11 @@ impl BlockTransactionUserCommandSource {
 }
 #[derive(Debug, Clone)]
 pub struct BlockCreatorAccount {
-    pub public_key: Option<String>,
+    pub public_key: String,
 }
 #[Object]
 impl BlockCreatorAccount {
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
 }
@@ -708,31 +708,31 @@ impl Query {
 }
 #[derive(Debug, Clone)]
 pub struct BlockSnarkJob {
-    pub block_height: Option<i64>,
-    pub block_state_hash: Option<String>,
-    pub date_time: Option<DateTime>,
-    pub fee: Option<i64>,
-    pub prover: Option<String>,
-    pub work_ids: Option<Vec<Option<i64>>>,
+    pub block_height: i64,
+    pub block_state_hash: String,
+    pub date_time: DateTime,
+    pub fee: i64,
+    pub prover: String,
+    pub work_ids: Vec<Option<i64>>,
 }
 #[Object]
 impl BlockSnarkJob {
-    pub async fn block_height(&self) -> Option<i64> {
+    pub async fn block_height(&self) -> i64 {
         self.block_height
     }
-    pub async fn block_state_hash(&self) -> Option<String> {
+    pub async fn block_state_hash(&self) -> String {
         self.block_state_hash.clone()
     }
-    pub async fn date_time(&self) -> Option<DateTime> {
+    pub async fn date_time(&self) -> DateTime {
         self.date_time.clone()
     }
-    pub async fn fee(&self) -> Option<i64> {
+    pub async fn fee(&self) -> i64 {
         self.fee
     }
-    pub async fn prover(&self) -> Option<String> {
+    pub async fn prover(&self) -> String {
         self.prover.clone()
     }
-    pub async fn work_ids(&self) -> Option<Vec<Option<i64>>> {
+    pub async fn work_ids(&self) -> Vec<Option<i64>> {
         self.work_ids.clone()
     }
 }
@@ -927,7 +927,7 @@ pub struct BlockWinnerAccountBalance {
     pub liquid: Option<i64>,
     pub locked: Option<Long>,
     pub state_hash: Option<String>,
-    pub total: Option<String>,
+    pub total: String,
     pub unknown: Option<Long>,
 }
 #[Object]
@@ -944,7 +944,7 @@ impl BlockWinnerAccountBalance {
     pub async fn state_hash(&self) -> Option<String> {
         self.state_hash.clone()
     }
-    pub async fn total(&self) -> Option<String> {
+    pub async fn total(&self) -> String {
         self.total.clone()
     }
     pub async fn unknown(&self) -> Option<Long> {
@@ -953,14 +953,14 @@ impl BlockWinnerAccountBalance {
 }
 #[derive(Debug, Clone)]
 pub struct BlockProtocolState {
-    pub previous_state_hash: Option<String>,
+    pub previous_state_hash: String,
 }
 #[Object]
 impl BlockProtocolState {
     pub async fn blockchain_state(
         &self,
         ctx: &Context<'_>,
-    ) -> Result<Option<BlockProtocolStateBlockchainState>> {
+    ) -> Result<BlockProtocolStateBlockchainState> {
         ctx.data_unchecked::<DataSource>()
             .block_protocol_state_blockchain_state(ctx, self)
             .await
@@ -968,12 +968,12 @@ impl BlockProtocolState {
     pub async fn consensus_state(
         &self,
         ctx: &Context<'_>,
-    ) -> Result<Option<BlockProtocolStateConsensusState>> {
+    ) -> Result<BlockProtocolStateConsensusState> {
         ctx.data_unchecked::<DataSource>()
             .block_protocol_state_consensus_state(ctx, self)
             .await
     }
-    pub async fn previous_state_hash(&self) -> Option<String> {
+    pub async fn previous_state_hash(&self) -> String {
         self.previous_state_hash.clone()
     }
 }
@@ -1021,14 +1021,14 @@ impl DeleteManyPayload {
 pub struct BlockProtocolStateConsensusState {
     pub block_height: Option<i64>,
     pub blockchain_length: Option<i64>,
-    pub epoch: Option<i64>,
+    pub epoch: i64,
     pub epoch_count: Option<i64>,
     pub has_ancestor_in_same_checkpoint_window: Option<bool>,
     pub last_vrf_output: Option<String>,
     pub min_window_density: Option<i64>,
-    pub slot: Option<i64>,
-    pub slot_since_genesis: Option<i64>,
-    pub total_currency: Option<f64>,
+    pub slot: i64,
+    pub slot_since_genesis: i64,
+    pub total_currency: f64,
 }
 #[Object]
 impl BlockProtocolStateConsensusState {
@@ -1038,7 +1038,7 @@ impl BlockProtocolStateConsensusState {
     pub async fn blockchain_length(&self) -> Option<i64> {
         self.blockchain_length
     }
-    pub async fn epoch(&self) -> Option<i64> {
+    pub async fn epoch(&self) -> i64 {
         self.epoch
     }
     pub async fn epoch_count(&self) -> Option<i64> {
@@ -1061,10 +1061,10 @@ impl BlockProtocolStateConsensusState {
             .block_protocol_state_consensus_state_next_epoch_data(ctx, self)
             .await
     }
-    pub async fn slot(&self) -> Option<i64> {
+    pub async fn slot(&self) -> i64 {
         self.slot
     }
-    pub async fn slot_since_genesis(&self) -> Option<i64> {
+    pub async fn slot_since_genesis(&self) -> i64 {
         self.slot_since_genesis
     }
     pub async fn staking_epoch_data(
@@ -1075,7 +1075,7 @@ impl BlockProtocolStateConsensusState {
             .block_protocol_state_consensus_state_staking_epoch_data(ctx, self)
             .await
     }
-    pub async fn total_currency(&self) -> Option<f64> {
+    pub async fn total_currency(&self) -> f64 {
         self.total_currency
     }
 }
@@ -1127,36 +1127,36 @@ impl NextstakeTiming {
 }
 #[derive(Debug, Clone)]
 pub struct Block {
-    pub block_height: Option<i64>,
-    pub canonical: Option<bool>,
+    pub block_height: i64,
+    pub canonical: bool,
     pub creator: Option<String>,
-    pub date_time: Option<DateTime>,
+    pub date_time: DateTime,
     pub received_time: Option<DateTime>,
-    pub snark_fees: Option<String>,
-    pub state_hash: Option<String>,
+    pub snark_fees: String,
+    pub state_hash: String,
     pub state_hash_field: Option<String>,
-    pub tx_fees: Option<String>,
+    pub tx_fees: String,
 }
 #[Object]
 impl Block {
-    pub async fn block_height(&self) -> Option<i64> {
+    pub async fn block_height(&self) -> i64 {
         self.block_height
     }
-    pub async fn canonical(&self) -> Option<bool> {
+    pub async fn canonical(&self) -> bool {
         self.canonical
     }
     pub async fn creator(&self) -> Option<String> {
         self.creator.clone()
     }
-    pub async fn creator_account(&self, ctx: &Context<'_>) -> Result<Option<BlockCreatorAccount>> {
+    pub async fn creator_account(&self, ctx: &Context<'_>) -> Result<BlockCreatorAccount> {
         ctx.data_unchecked::<DataSource>()
             .block_creator_account(ctx, self)
             .await
     }
-    pub async fn date_time(&self) -> Option<DateTime> {
+    pub async fn date_time(&self) -> DateTime {
         self.date_time.clone()
     }
-    pub async fn protocol_state(&self, ctx: &Context<'_>) -> Result<Option<BlockProtocolState>> {
+    pub async fn protocol_state(&self, ctx: &Context<'_>) -> Result<BlockProtocolState> {
         ctx.data_unchecked::<DataSource>()
             .block_protocol_state(ctx, self)
             .await
@@ -1164,32 +1164,29 @@ impl Block {
     pub async fn received_time(&self) -> Option<DateTime> {
         self.received_time.clone()
     }
-    pub async fn snark_fees(&self) -> Option<String> {
+    pub async fn snark_fees(&self) -> String {
         self.snark_fees.clone()
     }
-    pub async fn snark_jobs(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Option<Vec<Option<BlockSnarkJob>>>> {
+    pub async fn snark_jobs(&self, ctx: &Context<'_>) -> Result<Vec<Option<BlockSnarkJob>>> {
         ctx.data_unchecked::<DataSource>()
             .block_snark_jobs(ctx, self)
             .await
     }
-    pub async fn state_hash(&self) -> Option<String> {
+    pub async fn state_hash(&self) -> String {
         self.state_hash.clone()
     }
     pub async fn state_hash_field(&self) -> Option<String> {
         self.state_hash_field.clone()
     }
-    pub async fn transactions(&self, ctx: &Context<'_>) -> Result<Option<BlockTransaction>> {
+    pub async fn transactions(&self, ctx: &Context<'_>) -> Result<BlockTransaction> {
         ctx.data_unchecked::<DataSource>()
             .block_transactions(ctx, self)
             .await
     }
-    pub async fn tx_fees(&self) -> Option<String> {
+    pub async fn tx_fees(&self) -> String {
         self.tx_fees.clone()
     }
-    pub async fn winner_account(&self, ctx: &Context<'_>) -> Result<Option<BlockWinnerAccount>> {
+    pub async fn winner_account(&self, ctx: &Context<'_>) -> Result<BlockWinnerAccount> {
         ctx.data_unchecked::<DataSource>()
             .block_winner_account(ctx, self)
             .await
