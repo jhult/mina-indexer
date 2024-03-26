@@ -48,8 +48,8 @@ impl DataSource {
     ) -> Result<Option<Block>> {
         let db = db(ctx);
         // Choose genesis block if query is None
-        let state_hash = match query {
-            Some(query) => BlockHash::from(query.state_hash.expect("State Hash is required")),
+        let state_hash = match input.state_hash {
+            Some(state_hash) => BlockHash::from(state_hash),
             None => match db.get_canonical_hash_at_height(1)? {
                 Some(state_hash) => state_hash,
                 None => return Ok(None),
