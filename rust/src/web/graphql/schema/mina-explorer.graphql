@@ -1463,18 +1463,18 @@ input StakePermissionInsertInput {
 }
 
 type Query {
-  block(query: BlockQueryInput): Block
-  blocks(limit: Int = 100, sortBy: BlockSortByInput, query: BlockQueryInput): [Block]!
-  feetransfer(query: FeetransferQueryInput): Feetransfer
-  feetransfers(query: FeetransferQueryInput, limit: Int = 100, sortBy: FeetransferSortByInput): [Feetransfer]!
-  nextstake(query: NextstakeQueryInput): Nextstake
-  nextstakes(sortBy: NextstakeSortByInput, query: NextstakeQueryInput, limit: Int = 100): [Nextstake]!
-  snark(query: SnarkQueryInput): Snark
-  snarks(query: SnarkQueryInput, limit: Int = 100, sortBy: SnarkSortByInput): [Snark]!
-  stake(query: StakeQueryInput): Stake
-  stakes(query: StakeQueryInput, limit: Int = 100, sortBy: StakeSortByInput): [Stake]!
-  transaction(query: TransactionQueryInput): Transaction
-  transactions(query: TransactionQueryInput, limit: Int = 100, sortBy: TransactionSortByInput): [Transaction]!
+  block(query: BlockQueryInput!): Block
+  blocks(limit: Int = 100, sortBy: BlockSortByInput!, query: BlockQueryInput!): [Block]!
+  feetransfer(query: FeetransferQueryInput!): Feetransfer
+  feetransfers(query: FeetransferQueryInput!, limit: Int = 100, sortBy: FeetransferSortByInput!): [Feetransfer]!
+  nextstake(query: NextstakeQueryInput!): Nextstake
+  nextstakes(sortBy: NextstakeSortByInput!, query: NextstakeQueryInput!, limit: Int = 100): [Nextstake]!
+  snark(query: SnarkQueryInput!): Snark
+  snarks(query: SnarkQueryInput!, limit: Int = 100, sortBy: SnarkSortByInput!): [Snark]!
+  stake(query: StakeQueryInput!): Stake
+  stakes(query: StakeQueryInput!, limit: Int = 100, sortBy: StakeSortByInput!): [Stake]!
+  transaction(query: TransactionQueryInput!): Transaction
+  transactions(query: TransactionQueryInput!, limit: Int = 100, sortBy: TransactionSortByInput!): [Transaction]!
 }
 
 scalar Long
