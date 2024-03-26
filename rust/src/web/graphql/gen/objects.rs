@@ -413,36 +413,33 @@ impl TransactionFeePayer {
 }
 #[derive(Debug, Clone)]
 pub struct Nextstake {
-    pub balance: Option<f64>,
-    pub delegate: Option<String>,
-    pub ledger_hash: Option<String>,
-    pub nonce: Option<i64>,
-    pub pk: Option<String>,
-    pub public_key: Option<String>,
-    pub receipt_chain_hash: Option<String>,
-    pub token: Option<i64>,
-    pub voting_for: Option<String>,
+    pub balance: f64,
+    pub delegate: String,
+    pub ledger_hash: String,
+    pub nonce: i64,
+    pub pk: String,
+    pub public_key: String,
+    pub receipt_chain_hash: String,
+    pub token: i64,
+    pub voting_for: String,
 }
 #[Object]
 impl Nextstake {
-    pub async fn balance(&self) -> Option<f64> {
+    pub async fn balance(&self) -> f64 {
         self.balance
     }
-    pub async fn delegate(&self) -> Option<String> {
+    pub async fn delegate(&self) -> String {
         self.delegate.clone()
     }
-    pub async fn ledger_hash(&self) -> Option<String> {
+    pub async fn ledger_hash(&self) -> String {
         self.ledger_hash.clone()
     }
-    pub async fn next_delegation_totals(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Option<NextDelegationTotal>> {
+    pub async fn next_delegation_totals(&self, ctx: &Context<'_>) -> Result<NextDelegationTotal> {
         ctx.data_unchecked::<DataSource>()
             .nextstake_next_delegation_totals(ctx, self)
             .await
     }
-    pub async fn nonce(&self) -> Option<i64> {
+    pub async fn nonce(&self) -> i64 {
         self.nonce
     }
     pub async fn permissions(&self, ctx: &Context<'_>) -> Result<Option<NextstakePermission>> {
@@ -450,13 +447,13 @@ impl Nextstake {
             .nextstake_permissions(ctx, self)
             .await
     }
-    pub async fn pk(&self) -> Option<String> {
+    pub async fn pk(&self) -> String {
         self.pk.clone()
     }
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
-    pub async fn receipt_chain_hash(&self) -> Option<String> {
+    pub async fn receipt_chain_hash(&self) -> String {
         self.receipt_chain_hash.clone()
     }
     pub async fn timing(&self, ctx: &Context<'_>) -> Result<Option<NextstakeTiming>> {
@@ -464,10 +461,10 @@ impl Nextstake {
             .nextstake_timing(ctx, self)
             .await
     }
-    pub async fn token(&self) -> Option<i64> {
+    pub async fn token(&self) -> i64 {
         self.token
     }
-    pub async fn voting_for(&self) -> Option<String> {
+    pub async fn voting_for(&self) -> String {
         self.voting_for.clone()
     }
 }

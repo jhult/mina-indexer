@@ -912,18 +912,18 @@ input BlockProtocolStateConsensusStateStakingEpochDatumUpdateInput {
 }
 
 type Nextstake {
-  balance: Float
-  delegate: String
-  ledgerHash: String
-  nextDelegationTotals: NextDelegationTotal
-  nonce: Int
+  balance: Float!
+  delegate: String!
+  ledgerHash: String!
+  nextDelegationTotals: NextDelegationTotal!
+  nonce: Int!
   permissions: NextstakePermission
-  pk: String
-  public_key: String
-  receipt_chain_hash: String
+  pk: String!
+  public_key: String!
+  receipt_chain_hash: String!
   timing: NextstakeTiming
-  token: Int
-  voting_for: String
+  token: Int!
+  voting_for: String!
 }
 
 input BlockTransactionUserCommandFromAccountQueryInput {
