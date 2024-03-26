@@ -6,7 +6,7 @@ use crate::{
         common::{Base58EncodableVersionedType, HashV1},
         version_bytes,
     },
-    web::graphql::millis_to_date_string,
+    web::millis_to_rfc_date_string,
 };
 
 pub struct LedgerHash(pub String);
@@ -22,11 +22,11 @@ impl LedgerHash {
 impl From<PrecomputedBlock> for Block {
     fn from(block: PrecomputedBlock) -> Self {
         let winner_account = block.block_creator();
-        let date_time = millis_to_date_string(block.timestamp().try_into().unwrap());
+        let date_time = millis_to_rfc_date_string(block.timestamp().try_into().unwrap());
         let pk_creator = block.consensus_state().block_creator;
         let creator = CompressedPubKey::from(&pk_creator).into_address();
         let scheduled_time = block.scheduled_time.clone();
-        let received_time = millis_to_date_string(scheduled_time.parse::<i64>().unwrap());
+        let received_time = millis_to_rfc_date_string(scheduled_time.parse::<i64>().unwrap());
         let previous_state_hash = block.previous_state_hash().0;
         let tx_fees = block.tx_fees();
         let snark_fees = block.snark_fees();

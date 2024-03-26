@@ -1,4 +1,5 @@
 use super::{
+    date_time_to_scalar,
     gen::{Transaction, TransactionQueryInput},
     sanitize_json,
 };
@@ -93,8 +94,7 @@ impl Transaction {
                     }
                 };
 
-                // TODO: proper incoming format??
-                let datetime = chrono::DateTime::<Utc>::from_timestamp_millis(timestamp as i64);
+                let datetime = date_time_to_scalar(timestamp as i64);
 
                 Self {
                     hash: hash.to_string(),
