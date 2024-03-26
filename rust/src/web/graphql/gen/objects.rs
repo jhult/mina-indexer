@@ -600,11 +600,7 @@ impl BlockProtocolStateConsensusStateStakingEpochDatum {
 pub struct Query {}
 #[Object]
 impl Query {
-    pub async fn block(
-        &self,
-        ctx: &Context<'_>,
-        query: Option<BlockQueryInput>,
-    ) -> Result<Option<Block>> {
+    pub async fn block(&self, ctx: &Context<'_>, query: BlockQueryInput) -> Result<Option<Block>> {
         ctx.data_unchecked::<DataSource>()
             .query_block(ctx, self, query)
             .await
@@ -613,8 +609,8 @@ impl Query {
         &self,
         ctx: &Context<'_>,
         limit: Option<i64>,
-        sort_by: Option<BlockSortByInput>,
-        query: Option<BlockQueryInput>,
+        sort_by: BlockSortByInput,
+        query: BlockQueryInput,
     ) -> Result<Vec<Option<Block>>> {
         ctx.data_unchecked::<DataSource>()
             .query_blocks(ctx, self, limit, sort_by, query)
@@ -623,7 +619,7 @@ impl Query {
     pub async fn feetransfer(
         &self,
         ctx: &Context<'_>,
-        query: Option<FeetransferQueryInput>,
+        query: FeetransferQueryInput,
     ) -> Result<Option<Feetransfer>> {
         ctx.data_unchecked::<DataSource>()
             .query_feetransfer(ctx, self, query)
@@ -632,9 +628,9 @@ impl Query {
     pub async fn feetransfers(
         &self,
         ctx: &Context<'_>,
-        query: Option<FeetransferQueryInput>,
+        query: FeetransferQueryInput,
         limit: Option<i64>,
-        sort_by: Option<FeetransferSortByInput>,
+        sort_by: FeetransferSortByInput,
     ) -> Result<Vec<Option<Feetransfer>>> {
         ctx.data_unchecked::<DataSource>()
             .query_feetransfers(ctx, self, query, limit, sort_by)
@@ -643,7 +639,7 @@ impl Query {
     pub async fn nextstake(
         &self,
         ctx: &Context<'_>,
-        query: Option<NextstakeQueryInput>,
+        query: NextstakeQueryInput,
     ) -> Result<Option<Nextstake>> {
         ctx.data_unchecked::<DataSource>()
             .query_nextstake(ctx, self, query)
@@ -652,19 +648,15 @@ impl Query {
     pub async fn nextstakes(
         &self,
         ctx: &Context<'_>,
-        sort_by: Option<NextstakeSortByInput>,
-        query: Option<NextstakeQueryInput>,
+        sort_by: NextstakeSortByInput,
+        query: NextstakeQueryInput,
         limit: Option<i64>,
     ) -> Result<Vec<Option<Nextstake>>> {
         ctx.data_unchecked::<DataSource>()
             .query_nextstakes(ctx, self, sort_by, query, limit)
             .await
     }
-    pub async fn snark(
-        &self,
-        ctx: &Context<'_>,
-        query: Option<SnarkQueryInput>,
-    ) -> Result<Option<Snark>> {
+    pub async fn snark(&self, ctx: &Context<'_>, query: SnarkQueryInput) -> Result<Option<Snark>> {
         ctx.data_unchecked::<DataSource>()
             .query_snark(ctx, self, query)
             .await
@@ -672,19 +664,15 @@ impl Query {
     pub async fn snarks(
         &self,
         ctx: &Context<'_>,
-        query: Option<SnarkQueryInput>,
+        query: SnarkQueryInput,
         limit: Option<i64>,
-        sort_by: Option<SnarkSortByInput>,
+        sort_by: SnarkSortByInput,
     ) -> Result<Vec<Option<Snark>>> {
         ctx.data_unchecked::<DataSource>()
             .query_snarks(ctx, self, query, limit, sort_by)
             .await
     }
-    pub async fn stake(
-        &self,
-        ctx: &Context<'_>,
-        query: Option<StakeQueryInput>,
-    ) -> Result<Option<Stake>> {
+    pub async fn stake(&self, ctx: &Context<'_>, query: StakeQueryInput) -> Result<Option<Stake>> {
         ctx.data_unchecked::<DataSource>()
             .query_stake(ctx, self, query)
             .await
@@ -692,9 +680,9 @@ impl Query {
     pub async fn stakes(
         &self,
         ctx: &Context<'_>,
-        query: Option<StakeQueryInput>,
+        query: StakeQueryInput,
         limit: Option<i64>,
-        sort_by: Option<StakeSortByInput>,
+        sort_by: StakeSortByInput,
     ) -> Result<Vec<Option<Stake>>> {
         ctx.data_unchecked::<DataSource>()
             .query_stakes(ctx, self, query, limit, sort_by)
@@ -703,7 +691,7 @@ impl Query {
     pub async fn transaction(
         &self,
         ctx: &Context<'_>,
-        query: Option<TransactionQueryInput>,
+        query: TransactionQueryInput,
     ) -> Result<Option<Transaction>> {
         ctx.data_unchecked::<DataSource>()
             .query_transaction(ctx, self, query)
@@ -712,9 +700,9 @@ impl Query {
     pub async fn transactions(
         &self,
         ctx: &Context<'_>,
-        query: Option<TransactionQueryInput>,
+        query: TransactionQueryInput,
         limit: Option<i64>,
-        sort_by: Option<TransactionSortByInput>,
+        sort_by: TransactionSortByInput,
     ) -> Result<Vec<Option<Transaction>>> {
         ctx.data_unchecked::<DataSource>()
             .query_transactions(ctx, self, query, limit, sort_by)

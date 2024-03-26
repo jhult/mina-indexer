@@ -13,9 +13,9 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _p2: Option<StakeQueryInput>,
-        _p3: Option<i64>,
-        _p4: Option<StakeSortByInput>,
+        _input: StakeQueryInput,
+        _limit: Option<i64>,
+        _sort_by: StakeSortByInput,
     ) -> Result<Vec<Option<Stake>>> {
         todo!()
     }
@@ -24,7 +24,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _query_input: Option<FeetransferQueryInput>,
+        _input: FeetransferQueryInput,
     ) -> Result<Option<Feetransfer>> {
         todo!()
     }
@@ -33,9 +33,9 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _: &Query,
-        _: Option<i64>,
-        _sort_by: Option<BlockSortByInput>,
-        _query_input: Option<BlockQueryInput>,
+        _limit: Option<i64>,
+        _sort_by: BlockSortByInput,
+        _input: BlockQueryInput,
     ) -> Result<Vec<Option<Block>>> {
         todo!()
     }
@@ -44,7 +44,7 @@ impl DataSource {
         &self,
         ctx: &Context<'_>,
         _: &Query,
-        query: Option<BlockQueryInput>,
+        input: BlockQueryInput,
     ) -> Result<Option<Block>> {
         let db = db(ctx);
         // Choose genesis block if query is None
@@ -71,7 +71,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Block,
-    ) -> Result<Option<BlockTransaction>> {
+    ) -> Result<BlockTransaction> {
         todo!()
     }
 
@@ -79,7 +79,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Block,
-    ) -> Result<Option<BlockWinnerAccount>> {
+    ) -> Result<BlockWinnerAccount> {
         todo!()
     }
 
@@ -87,7 +87,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Nextstake,
-    ) -> Result<Option<NextDelegationTotal>> {
+    ) -> Result<NextDelegationTotal> {
         todo!()
     }
 
@@ -103,7 +103,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Block,
-    ) -> Result<Option<Vec<Option<BlockSnarkJob>>>> {
+    ) -> Result<Vec<Option<BlockSnarkJob>>> {
         todo!()
     }
 
@@ -111,7 +111,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Block,
-    ) -> Result<Option<BlockProtocolState>> {
+    ) -> Result<BlockProtocolState> {
         todo!()
     }
 
@@ -119,7 +119,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Block,
-    ) -> Result<Option<BlockCreatorAccount>> {
+    ) -> Result<BlockCreatorAccount> {
         todo!()
     }
 
@@ -151,7 +151,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockProtocolState,
-    ) -> Result<Option<BlockProtocolStateConsensusState>> {
+    ) -> Result<BlockProtocolStateConsensusState> {
         todo!()
     }
 
@@ -159,7 +159,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockProtocolState,
-    ) -> Result<Option<BlockProtocolStateBlockchainState>> {
+    ) -> Result<BlockProtocolStateBlockchainState> {
         todo!()
     }
 
@@ -183,7 +183,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Transaction,
-    ) -> Result<Option<TransactionReceiver>> {
+    ) -> Result<TransactionReceiver> {
         todo!()
     }
 
@@ -207,7 +207,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Transaction,
-    ) -> Result<Option<Block>> {
+    ) -> Result<TransactionBlock> {
         todo!()
     }
 
@@ -223,9 +223,9 @@ impl DataSource {
         &self,
         ctx: &Context<'_>,
         _: &Query,
-        query: Option<TransactionQueryInput>,
+        input: TransactionQueryInput,
         limit: Option<i64>,
-        sort_by: Option<TransactionSortByInput>,
+        sort_by: TransactionSortByInput,
     ) -> Result<Vec<Option<Transaction>>> {
         let db = db(ctx);
         let limit = limit.unwrap_or(100);
@@ -233,24 +233,19 @@ impl DataSource {
 
         let mut transactions: Vec<Option<Transaction>> = Vec::new();
 
-        let iter = if let Some(ref query_input) = query {
-            if let Some(date_time_gte) = query_input.date_time_gte {
-                // TODO: what incoming format and timezone? UTC?
-                let bytes = chrono::DateTime::parse_from_rfc2822(&date_time_gte.0)
-                    .unwrap()
-                    .timestamp_millis()
-                    .to_string()
-                    .into_bytes();
-                //let key = Base32Hex.encode(&bytes);
+        let iter = if let Some(date_time_gte) = input.date_time_gte {
+            // TODO: what incoming format and timezone? UTC?
+            let bytes = chrono::DateTime::parse_from_rfc2822(&date_time_gte.0)
+                .unwrap()
+                .timestamp_millis()
+                .to_string()
+                .into_bytes();
+            //let key = Base32Hex.encode(&bytes);
 
-                let mode = IteratorMode::From(&key.into_bytes(), Direction::Forward);
-                let mut iter = db.database.iterator_cf(TX_COLUMN.as_ref(), mode);
-                iter.set_mode(mode);
-                iter
-            } else {
-                db.database
-                    .iterator_cf(TX_COLUMN.as_ref(), IteratorMode::Start)
-            }
+            let mode = IteratorMode::From(&key.into_bytes(), Direction::Forward);
+            let mut iter = db.database.iterator_cf(TX_COLUMN.as_ref(), mode);
+            iter.set_mode(mode);
+            iter
         } else {
             db.database
                 .iterator_cf(TX_COLUMN.as_ref(), IteratorMode::Start)
@@ -291,15 +286,11 @@ impl DataSource {
             // }
         }
 
-        if let Some(sort_by) = sort_by {
-            match sort_by {
-                TransactionSortByInput::NonceAsc => {
-                    transactions.sort_by(|Some(a), Some(b)| a.nonce.unwrap().cmp(&b.nonce.unwrap()))
-                }
-                _ => {
-                    transactions.sort_by(|Some(a), Some(b)| b.nonce.unwrap().cmp(&a.nonce.unwrap()))
-                }
+        match sort_by {
+            TransactionSortByInput::NonceAsc => {
+                transactions.sort_by(|Some(a), Some(b)| a.nonce.cmp(&b.nonce))
             }
+            _ => transactions.sort_by(|Some(a), Some(b)| b.nonce.cmp(&a.nonce)),
         }
 
         //Ok(Some(transactions))
@@ -310,7 +301,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _p2: Option<TransactionQueryInput>,
+        _input: TransactionQueryInput,
     ) -> Result<Option<Transaction>> {
         todo!()
     }
@@ -319,7 +310,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _p2: Option<StakeQueryInput>,
+        _input: StakeQueryInput,
     ) -> Result<Option<Stake>> {
         todo!()
     }
@@ -328,9 +319,9 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _p2: Option<SnarkQueryInput>,
-        _p3: Option<i64>,
-        _p4: Option<SnarkSortByInput>,
+        _input: SnarkQueryInput,
+        _limit: Option<i64>,
+        _sort_by: SnarkSortByInput,
     ) -> Result<Vec<Option<Snark>>> {
         todo!()
     }
@@ -339,7 +330,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _p2: Option<SnarkQueryInput>,
+        _input: SnarkQueryInput,
     ) -> Result<Option<Snark>> {
         todo!()
     }
@@ -348,9 +339,9 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _p2: Option<NextstakeSortByInput>,
-        _p3: Option<NextstakeQueryInput>,
-        _p4: Option<i64>,
+        _sort_by: NextstakeSortByInput,
+        _input: NextstakeQueryInput,
+        _limit: Option<i64>,
     ) -> Result<Vec<Option<Nextstake>>> {
         todo!()
     }
@@ -359,7 +350,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _p2: Option<NextstakeQueryInput>,
+        _p2: NextstakeQueryInput,
     ) -> Result<Option<Nextstake>> {
         todo!()
     }
@@ -368,9 +359,9 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _p2: Option<FeetransferQueryInput>,
-        _p3: Option<i64>,
-        _p4: Option<FeetransferSortByInput>,
+        _input: FeetransferQueryInput,
+        _limit: Option<i64>,
+        _sort_by: FeetransferSortByInput,
     ) -> Result<Vec<Option<Feetransfer>>> {
         todo!()
     }
@@ -383,11 +374,7 @@ impl DataSource {
         todo!()
     }
 
-    pub(crate) async fn snark_block(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Snark,
-    ) -> Result<Option<Block>> {
+    pub(crate) async fn snark_block(&self, _ctx: &Context<'_>, _p1: &Snark) -> Result<Block> {
         todo!()
     }
 
@@ -427,7 +414,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Stake,
-    ) -> Result<Option<DelegationTotal>> {
+    ) -> Result<DelegationTotal> {
         todo!()
     }
 
@@ -435,7 +422,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockWinnerAccount,
-    ) -> Result<Option<BlockWinnerAccountBalance>> {
+    ) -> Result<BlockWinnerAccountBalance> {
         todo!()
     }
 
@@ -475,7 +462,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockTransaction,
-    ) -> Result<Option<Vec<Option<BlockTransactionUserCommand>>>> {
+    ) -> Result<Vec<Option<BlockTransactionUserCommand>>> {
         todo!()
     }
 
@@ -483,15 +470,15 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockTransaction,
-    ) -> Result<Option<Vec<Option<BlockTransactionFeeTransfer>>>> {
-        unimplemented!()
+    ) -> Result<Vec<Option<BlockTransactionFeeTransfer>>> {
+        todo!()
     }
 
     pub(crate) async fn block_transaction_coinbase_receiver_account(
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockTransaction,
-    ) -> Result<Option<BlockTransactionCoinbaseReceiverAccount>> {
+    ) -> Result<BlockTransactionCoinbaseReceiverAccount> {
         todo!()
     }
 }
