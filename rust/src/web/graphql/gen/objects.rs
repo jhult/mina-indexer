@@ -318,11 +318,11 @@ impl BlockWinnerAccount {
 }
 #[derive(Debug, Clone)]
 pub struct TransactionReceiver {
-    pub public_key: Option<String>,
+    pub public_key: String,
 }
 #[Object]
 impl TransactionReceiver {
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
 }
@@ -813,46 +813,46 @@ impl BlockTransactionUserCommandFromAccount {
 }
 #[derive(Debug, Clone)]
 pub struct Transaction {
-    pub amount: Option<f64>,
-    pub block_height: Option<i64>,
-    pub canonical: Option<bool>,
+    pub amount: f64,
+    pub block_height: i64,
+    pub canonical: bool,
     pub date_time: Option<DateTime>,
-    pub failure_reason: Option<String>,
-    pub fee: Option<f64>,
+    pub failure_reason: String,
+    pub fee: f64,
     pub fee_token: Option<i64>,
     pub from: Option<String>,
-    pub hash: Option<String>,
-    pub id: Option<String>,
+    pub hash: String,
+    pub id: String,
     pub is_delegation: Option<bool>,
     pub kind: Option<String>,
-    pub memo: Option<String>,
-    pub nonce: Option<i64>,
-    pub to: Option<String>,
+    pub memo: String,
+    pub nonce: i64,
+    pub to: String,
     pub token: Option<i64>,
 }
 #[Object]
 impl Transaction {
-    pub async fn amount(&self) -> Option<f64> {
+    pub async fn amount(&self) -> f64 {
         self.amount
     }
-    pub async fn block(&self, ctx: &Context<'_>) -> Result<Option<Block>> {
+    pub async fn block(&self, ctx: &Context<'_>) -> Result<TransactionBlock> {
         ctx.data_unchecked::<DataSource>()
             .transaction_block(ctx, self)
             .await
     }
-    pub async fn block_height(&self) -> Option<i64> {
+    pub async fn block_height(&self) -> i64 {
         self.block_height
     }
-    pub async fn canonical(&self) -> Option<bool> {
+    pub async fn canonical(&self) -> bool {
         self.canonical
     }
     pub async fn date_time(&self) -> Option<DateTime> {
         self.date_time.clone()
     }
-    pub async fn failure_reason(&self) -> Option<String> {
+    pub async fn failure_reason(&self) -> String {
         self.failure_reason.clone()
     }
-    pub async fn fee(&self) -> Option<f64> {
+    pub async fn fee(&self) -> f64 {
         self.fee
     }
     pub async fn fee_payer(&self, ctx: &Context<'_>) -> Result<Option<TransactionFeePayer>> {
@@ -871,10 +871,10 @@ impl Transaction {
             .transaction_from_account(ctx, self)
             .await
     }
-    pub async fn hash(&self) -> Option<String> {
+    pub async fn hash(&self) -> String {
         self.hash.clone()
     }
-    pub async fn id(&self) -> Option<String> {
+    pub async fn id(&self) -> String {
         self.id.clone()
     }
     pub async fn is_delegation(&self) -> Option<bool> {
@@ -883,13 +883,13 @@ impl Transaction {
     pub async fn kind(&self) -> Option<String> {
         self.kind.clone()
     }
-    pub async fn memo(&self) -> Option<String> {
+    pub async fn memo(&self) -> String {
         self.memo.clone()
     }
-    pub async fn nonce(&self) -> Option<i64> {
+    pub async fn nonce(&self) -> i64 {
         self.nonce
     }
-    pub async fn receiver(&self, ctx: &Context<'_>) -> Result<Option<TransactionReceiver>> {
+    pub async fn receiver(&self, ctx: &Context<'_>) -> Result<TransactionReceiver> {
         ctx.data_unchecked::<DataSource>()
             .transaction_receiver(ctx, self)
             .await
@@ -899,7 +899,7 @@ impl Transaction {
             .transaction_source(ctx, self)
             .await
     }
-    pub async fn to(&self) -> Option<String> {
+    pub async fn to(&self) -> String {
         self.to.clone()
     }
     pub async fn to_account(&self, ctx: &Context<'_>) -> Result<Option<TransactionToAccount>> {
@@ -1228,5 +1228,19 @@ impl BlockProtocolStateConsensusStateStakingEpochDatumLedger {
     }
     pub async fn total_currency(&self) -> Option<f64> {
         self.total_currency
+    }
+}
+#[derive(Debug, Clone)]
+pub struct TransactionBlock {
+    pub date_time: DateTime,
+    pub state_hash: String,
+}
+#[Object]
+impl TransactionBlock {
+    pub async fn date_time(&self) -> DateTime {
+        self.date_time.clone()
+    }
+    pub async fn state_hash(&self) -> String {
+        self.state_hash.clone()
     }
 }
