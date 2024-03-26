@@ -1,6 +1,6 @@
 pub mod blocks;
 mod gen;
-mod query_data;
+mod query_implementations;
 mod transactions;
 
 use self::gen::{schema_builder, Query};

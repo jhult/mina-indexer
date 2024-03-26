@@ -11,7 +11,7 @@ use super::{
     },
     scalars::{DateTime, Long, ObjectId},
 };
-use crate::web::graphql::query_data::DataSource;
+use crate::web::graphql::query_implementations::DataSource;
 use async_graphql::*;
 #[derive(Debug, Clone)]
 pub struct BlockTransactionFeeTransfer {
