@@ -705,7 +705,7 @@ type BlockWinnerAccount {
 }
 
 type TransactionReceiver {
-  publicKey: String
+  publicKey: String!
 }
 
 input BlockTransactionInsertInput {
@@ -1765,26 +1765,26 @@ input BlockProtocolStateConsensusStateNextEpochDatumLedgerQueryInput {
 }
 
 type Transaction {
-  amount: Float
-  block: Block
-  blockHeight: Int
-  canonical: Boolean
+  amount: Float!
+  block: TransactionBlock!
+  blockHeight: Int!
+  canonical: Boolean!
   dateTime: DateTime
-  failureReason: String
-  fee: Float
+  failureReason: String!
+  fee: Float!
   feePayer: TransactionFeePayer
   feeToken: Int
   from: String
   fromAccount: TransactionFromAccount
-  hash: String
-  id: String
+  hash: String!
+  id: String!
   isDelegation: Boolean
   kind: String
-  memo: String
-  nonce: Int
-  receiver: TransactionReceiver
+  memo: String!
+  nonce: Int!
+  receiver: TransactionReceiver!
   source: TransactionSource
-  to: String
+  to: String!
   toAccount: TransactionToAccount
   token: Int
 }
@@ -2841,6 +2841,12 @@ input StakeQueryInput {
   pk_exists: Boolean
   delegate_lt: String
 }
+
 schema {
   query: Query
+}
+
+type TransactionBlock {
+  dateTime: DateTime!
+  stateHash: String!
 }
