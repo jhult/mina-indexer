@@ -74,7 +74,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Block,
-    ) -> Result<Option<BlockTransaction>> {
+    ) -> Result<BlockTransaction> {
         todo!()
     }
 
@@ -82,7 +82,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Block,
-    ) -> Result<Option<BlockWinnerAccount>> {
+    ) -> Result<BlockWinnerAccount> {
         todo!()
     }
 
@@ -90,7 +90,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Nextstake,
-    ) -> Result<Option<NextDelegationTotal>> {
+    ) -> Result<NextDelegationTotal> {
         todo!()
     }
 
@@ -106,7 +106,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Block,
-    ) -> Result<Option<Vec<Option<BlockSnarkJob>>>> {
+    ) -> Result<Vec<Option<BlockSnarkJob>>> {
         todo!()
     }
 
@@ -114,7 +114,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Block,
-    ) -> Result<Option<BlockProtocolState>> {
+    ) -> Result<BlockProtocolState> {
         todo!()
     }
 
@@ -122,7 +122,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Block,
-    ) -> Result<Option<BlockCreatorAccount>> {
+    ) -> Result<BlockCreatorAccount> {
         todo!()
     }
 
@@ -154,7 +154,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockProtocolState,
-    ) -> Result<Option<BlockProtocolStateConsensusState>> {
+    ) -> Result<BlockProtocolStateConsensusState> {
         todo!()
     }
 
@@ -162,7 +162,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockProtocolState,
-    ) -> Result<Option<BlockProtocolStateBlockchainState>> {
+    ) -> Result<BlockProtocolStateBlockchainState> {
         todo!()
     }
 
@@ -186,7 +186,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Transaction,
-    ) -> Result<Option<TransactionReceiver>> {
+    ) -> Result<TransactionReceiver> {
         todo!()
     }
 
@@ -210,7 +210,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Transaction,
-    ) -> Result<Option<Block>> {
+    ) -> Result<TransactionBlock> {
         todo!()
     }
 
@@ -303,7 +303,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _p2: TransactionQueryInput,
+        _input: TransactionQueryInput,
     ) -> Result<Option<Transaction>> {
         todo!()
     }
@@ -312,7 +312,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _p2: StakeQueryInput,
+        _input: StakeQueryInput,
     ) -> Result<Option<Stake>> {
         todo!()
     }
@@ -361,9 +361,9 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Query,
-        _p2: FeetransferQueryInput,
-        _p3: Option<i64>,
-        _p4: FeetransferSortByInput,
+        _input: FeetransferQueryInput,
+        _limit: Option<i64>,
+        _sort_by: FeetransferSortByInput,
     ) -> Result<Vec<Option<Feetransfer>>> {
         todo!()
     }
@@ -376,11 +376,7 @@ impl DataSource {
         todo!()
     }
 
-    pub(crate) async fn snark_block(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Snark,
-    ) -> Result<Option<Block>> {
+    pub(crate) async fn snark_block(&self, _ctx: &Context<'_>, _p1: &Snark) -> Result<Block> {
         todo!()
     }
 
@@ -420,7 +416,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &Stake,
-    ) -> Result<Option<DelegationTotal>> {
+    ) -> Result<DelegationTotal> {
         todo!()
     }
 
@@ -428,7 +424,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockWinnerAccount,
-    ) -> Result<Option<BlockWinnerAccountBalance>> {
+    ) -> Result<BlockWinnerAccountBalance> {
         todo!()
     }
 
@@ -468,7 +464,7 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockTransaction,
-    ) -> Result<Option<Vec<Option<BlockTransactionUserCommand>>>> {
+    ) -> Result<Vec<Option<BlockTransactionUserCommand>>> {
         todo!()
     }
 
@@ -476,15 +472,15 @@ impl DataSource {
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockTransaction,
-    ) -> Result<Option<Vec<Option<BlockTransactionFeeTransfer>>>> {
-        unimplemented!()
+    ) -> Result<Vec<Option<BlockTransactionFeeTransfer>>> {
+        todo!()
     }
 
     pub(crate) async fn block_transaction_coinbase_receiver_account(
         &self,
         _ctx: &Context<'_>,
         _p1: &BlockTransaction,
-    ) -> Result<Option<BlockTransactionCoinbaseReceiverAccount>> {
+    ) -> Result<BlockTransactionCoinbaseReceiverAccount> {
         todo!()
     }
 }
