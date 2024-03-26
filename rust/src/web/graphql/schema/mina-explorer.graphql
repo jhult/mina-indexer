@@ -3,9 +3,9 @@ input BlockTransactionUserCommandFromAccountInsertInput {
 }
 
 type BlockTransactionFeeTransfer {
-  fee: String
-  recipient: String
-  type: String
+  fee: String!
+  recipient: String!
+  type: String!
 }
 
 type TransactionFromAccount {
@@ -23,8 +23,8 @@ input BlockTransactionUserCommandSourceUpdateInput {
 
 type BlockProtocolStateBlockchainState {
   date: Long
-  snarkedLedgerHash: String
-  stagedLedgerHash: String
+  snarkedLedgerHash: String!
+  stagedLedgerHash: String!
   utcDate: Long
 }
 
@@ -65,8 +65,8 @@ type StakeTiming {
 }
 
 type NextDelegationTotal {
-  countDelegates: Int
-  totalDelegated: Float
+  countDelegates: Int!
+  totalDelegated: Float!
 }
 
 input TransactionFromAccountQueryInput {
@@ -98,36 +98,36 @@ input BlockTransactionUserCommandReceiverQueryInput {
 }
 
 type BlockTransaction {
-  coinbase: String
-  coinbaseReceiverAccount: BlockTransactionCoinbaseReceiverAccount
-  feeTransfer: [BlockTransactionFeeTransfer]
-  userCommands: [BlockTransactionUserCommand]
+  coinbase: String!
+  coinbaseReceiverAccount: BlockTransactionCoinbaseReceiverAccount!
+  feeTransfer: [BlockTransactionFeeTransfer]!
+  userCommands: [BlockTransactionUserCommand]!
 }
 
 type BlockTransactionCoinbaseReceiverAccount {
-  publicKey: String
+  publicKey: String!
 }
 
 type BlockTransactionUserCommand {
-  amount: Float
+  amount: Float!
   blockHeight: Int
   blockStateHash: String
   dateTime: DateTime
   failureReason: String
-  fee: Float
+  fee: Float!
   feePayer: BlockTransactionUserCommandFeePayer
   feeToken: Int
-  from: String
+  from: String!
   fromAccount: BlockTransactionUserCommandFromAccount
-  hash: String
-  id: String
+  hash: String!
+  id: String!
   isDelegation: Boolean
   kind: String
   memo: String
   nonce: Int
   receiver: BlockTransactionUserCommandReceiver
   source: BlockTransactionUserCommandSource
-  to: String
+  to: String!
   toAccount: BlockTransactionUserCommandToAccount
   token: Int
 }
@@ -542,8 +542,8 @@ input BlockTransactionUserCommandFeePayerUpdateInput {
 }
 
 type DelegationTotal {
-  countDelegates: Int
-  totalDelegated: Float
+  countDelegates: Int!
+  totalDelegated: Float!
 }
 
 input BlockTransactionQueryInput {
@@ -700,12 +700,12 @@ input BlockProtocolStateConsensusStateNextEpochDatumInsertInput {
 }
 
 type BlockWinnerAccount {
-  balance: BlockWinnerAccountBalance
-  publicKey: String
+  balance: BlockWinnerAccountBalance!
+  publicKey: String!
 }
 
 type TransactionReceiver {
-  publicKey: String
+  publicKey: String!
 }
 
 input BlockTransactionInsertInput {
@@ -746,20 +746,20 @@ input BlockProtocolStateConsensusStateNextEpochDatumLedgerUpdateInput {
 }
 
 type Stake {
-  balance: Float
-  chainId: String
-  delegate: String
-  delegationTotals: DelegationTotal
-  epoch: Int
-  ledgerHash: String
-  nonce: Int
+  balance: Float!
+  chainId: String!
+  delegate: String!
+  delegationTotals: DelegationTotal!
+  epoch: Int!
+  ledgerHash: String!
+  nonce: Int!
   permissions: StakePermission
   pk: String
-  public_key: String
-  receipt_chain_hash: String
+  public_key: String!
+  receipt_chain_hash: String!
   timing: StakeTiming
-  token: Int
-  voting_for: String
+  token: Int!
+  voting_for: String!
 }
 
 input BlockTransactionUserCommandInsertInput {
@@ -912,18 +912,18 @@ input BlockProtocolStateConsensusStateStakingEpochDatumUpdateInput {
 }
 
 type Nextstake {
-  balance: Float
-  delegate: String
-  ledgerHash: String
-  nextDelegationTotals: NextDelegationTotal
-  nonce: Int
+  balance: Float!
+  delegate: String!
+  ledgerHash: String!
+  nextDelegationTotals: NextDelegationTotal!
+  nonce: Int!
   permissions: NextstakePermission
-  pk: String
-  public_key: String
-  receipt_chain_hash: String
+  pk: String!
+  public_key: String!
+  receipt_chain_hash: String!
   timing: NextstakeTiming
-  token: Int
-  voting_for: String
+  token: Int!
+  voting_for: String!
 }
 
 input BlockTransactionUserCommandFromAccountQueryInput {
@@ -941,13 +941,13 @@ input BlockTransactionUserCommandFromAccountQueryInput {
 }
 
 type Snark {
-  block: Block
-  blockHeight: Int
-  canonical: Boolean
-  dateTime: DateTime
-  fee: Float
-  prover: String
-  workIds: [Int]
+  block: Block!
+  blockHeight: Int!
+  canonical: Boolean!
+  dateTime: DateTime!
+  fee: Float!
+  prover: String!
+  workIds: [Int]!
 }
 
 input BlockProtocolStateInsertInput {
@@ -1200,7 +1200,7 @@ type BlockTransactionUserCommandSource {
 }
 
 type BlockCreatorAccount {
-  publicKey: String
+  publicKey: String!
 }
 
 input TransactionQueryInput {
@@ -1480,12 +1480,12 @@ type Query {
 scalar Long
 
 type BlockSnarkJob {
-  blockHeight: Int
-  blockStateHash: String
-  dateTime: DateTime
-  fee: Int
-  prover: String
-  workIds: [Int]
+  blockHeight: Int!
+  blockStateHash: String!
+  dateTime: DateTime!
+  fee: Int!
+  prover: String!
+  workIds: [Int]!
 }
 
 input BlockProtocolStateConsensusStateInsertInput {
@@ -1623,10 +1623,10 @@ type Feetransfer {
   blockHeight: Int
   blockStateHash: Block
   canonical: Boolean
-  dateTime: DateTime
-  fee: Int
-  recipient: String
-  type: String
+  dateTime: DateTime!
+  fee: Int!
+  recipient: String!
+  type: String!
 }
 
 input BlockSnarkJobUpdateInput {
@@ -1765,26 +1765,26 @@ input BlockProtocolStateConsensusStateNextEpochDatumLedgerQueryInput {
 }
 
 type Transaction {
-  amount: Float
-  block: Block
-  blockHeight: Int
-  canonical: Boolean
+  amount: Float!
+  block: TransactionBlock!
+  blockHeight: Int!
+  canonical: Boolean!
   dateTime: DateTime
-  failureReason: String
-  fee: Float
+  failureReason: String!
+  fee: Float!
   feePayer: TransactionFeePayer
   feeToken: Int
   from: String
   fromAccount: TransactionFromAccount
-  hash: String
-  id: String
+  hash: String!
+  id: String!
   isDelegation: Boolean
   kind: String
-  memo: String
-  nonce: Int
-  receiver: TransactionReceiver
+  memo: String!
+  nonce: Int!
+  receiver: TransactionReceiver!
   source: TransactionSource
-  to: String
+  to: String!
   toAccount: TransactionToAccount
   token: Int
 }
@@ -1798,7 +1798,7 @@ type BlockWinnerAccountBalance {
   liquid: Int
   locked: Long
   stateHash: String
-  total: String
+  total: String!
   unknown: Long
 }
 
@@ -2073,9 +2073,9 @@ input BlockProtocolStateConsensusStateStakingEpochDatumLedgerQueryInput {
 }
 
 type BlockProtocolState {
-  blockchainState: BlockProtocolStateBlockchainState
-  consensusState: BlockProtocolStateConsensusState
-  previousStateHash: String
+  blockchainState: BlockProtocolStateBlockchainState!
+  consensusState: BlockProtocolStateConsensusState!
+  previousStateHash: String!
 }
 
 type BlockProtocolStateConsensusStateNextEpochDatum {
@@ -2116,16 +2116,16 @@ input TransactionSourceInsertInput {
 type BlockProtocolStateConsensusState {
   blockHeight: Int
   blockchainLength: Int
-  epoch: Int
+  epoch: Int!
   epochCount: Int
   hasAncestorInSameCheckpointWindow: Boolean
   lastVrfOutput: String
   minWindowDensity: Int
   nextEpochData: BlockProtocolStateConsensusStateNextEpochDatum
-  slot: Int
-  slotSinceGenesis: Int
+  slot: Int!
+  slotSinceGenesis: Int!
   stakingEpochData: BlockProtocolStateConsensusStateStakingEpochDatum
-  totalCurrency: Float
+  totalCurrency: Float!
 }
 
 input TransactionUpdateInput {
@@ -2353,20 +2353,20 @@ input BlockTransactionUserCommandFeePayerQueryInput {
 }
 
 type Block {
-  blockHeight: Int
-  canonical: Boolean
+  blockHeight: Int!
+  canonical: Boolean!
   creator: String
-  creatorAccount: BlockCreatorAccount
-  dateTime: DateTime
-  protocolState: BlockProtocolState
+  creatorAccount: BlockCreatorAccount!
+  dateTime: DateTime!
+  protocolState: BlockProtocolState!
   receivedTime: DateTime
-  snarkFees: String
-  snarkJobs: [BlockSnarkJob]
-  stateHash: String
+  snarkFees: String!
+  snarkJobs: [BlockSnarkJob]!
+  stateHash: String!
   stateHashField: String
-  transactions: BlockTransaction
-  txFees: String
-  winnerAccount: BlockWinnerAccount
+  transactions: BlockTransaction!
+  txFees: String!
+  winnerAccount: BlockWinnerAccount!
 }
 
 input BlockSnarkJobInsertInput {
@@ -2841,6 +2841,16 @@ input StakeQueryInput {
   pk_exists: Boolean
   delegate_lt: String
 }
+
 schema {
   query: Query
+}
+
+type TransactionBlock {
+  dateTime: DateTime!
+  stateHash: String!
+}
+
+type SnarkBlock {
+  stateHash: String!
 }

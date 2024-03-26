@@ -1,3 +1,12 @@
 schema {
   query: Query
 }
+
+type TransactionBlock {
+  dateTime: DateTime!
+  stateHash: String!
+}
+
+type SnarkBlock {
+  stateHash: String!
+}
