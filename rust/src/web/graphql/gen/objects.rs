@@ -15,19 +15,19 @@ use crate::web::graphql::DataSource;
 use async_graphql::*;
 #[derive(Debug, Clone)]
 pub struct BlockTransactionFeeTransfer {
-    pub fee: Option<String>,
-    pub recipient: Option<String>,
-    pub r#type: Option<String>,
+    pub fee: String,
+    pub recipient: String,
+    pub r#type: String,
 }
 #[Object]
 impl BlockTransactionFeeTransfer {
-    pub async fn fee(&self) -> Option<String> {
+    pub async fn fee(&self) -> String {
         self.fee.clone()
     }
-    pub async fn recipient(&self) -> Option<String> {
+    pub async fn recipient(&self) -> String {
         self.recipient.clone()
     }
-    pub async fn r#type(&self) -> Option<String> {
+    pub async fn r#type(&self) -> String {
         self.r#type.clone()
     }
 }
@@ -44,8 +44,8 @@ impl TransactionFromAccount {
 #[derive(Debug, Clone)]
 pub struct BlockProtocolStateBlockchainState {
     pub date: Option<Long>,
-    pub snarked_ledger_hash: Option<String>,
-    pub staged_ledger_hash: Option<String>,
+    pub snarked_ledger_hash: String,
+    pub staged_ledger_hash: String,
     pub utc_date: Option<Long>,
 }
 #[Object]
@@ -53,10 +53,10 @@ impl BlockProtocolStateBlockchainState {
     pub async fn date(&self) -> Option<Long> {
         self.date.clone()
     }
-    pub async fn snarked_ledger_hash(&self) -> Option<String> {
+    pub async fn snarked_ledger_hash(&self) -> String {
         self.snarked_ledger_hash.clone()
     }
-    pub async fn staged_ledger_hash(&self) -> Option<String> {
+    pub async fn staged_ledger_hash(&self) -> String {
         self.staged_ledger_hash.clone()
     }
     pub async fn utc_date(&self) -> Option<Long> {
@@ -121,15 +121,15 @@ impl StakeTiming {
 }
 #[derive(Debug, Clone)]
 pub struct NextDelegationTotal {
-    pub count_delegates: Option<i64>,
-    pub total_delegated: Option<f64>,
+    pub count_delegates: i64,
+    pub total_delegated: f64,
 }
 #[Object]
 impl NextDelegationTotal {
-    pub async fn count_delegates(&self) -> Option<i64> {
+    pub async fn count_delegates(&self) -> i64 {
         self.count_delegates
     }
-    pub async fn total_delegated(&self) -> Option<f64> {
+    pub async fn total_delegated(&self) -> f64 {
         self.total_delegated
     }
 }
@@ -142,7 +142,7 @@ pub struct BlockTransaction {
 }
 #[Object]
 impl BlockTransaction {
-    pub async fn coinbase(&self) -> Option<String> {
+    pub async fn coinbase(&self) -> String {
         self.coinbase.clone()
     }
     pub async fn coinbase_receiver_account(&self) -> BlockTransactionCoinbaseReceiverAccount {
@@ -157,17 +157,17 @@ impl BlockTransaction {
 }
 #[derive(Debug, Clone)]
 pub struct BlockTransactionCoinbaseReceiverAccount {
-    pub public_key: Option<String>,
+    pub public_key: String,
 }
 #[Object]
 impl BlockTransactionCoinbaseReceiverAccount {
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
 }
 #[derive(Debug, Clone)]
 pub struct BlockTransactionUserCommand {
-    pub amount: Option<f64>,
+    pub amount: f64,
     pub block_height: Option<i64>,
     pub block_state_hash: Option<String>,
     pub date_time: Option<DateTime>,
@@ -191,7 +191,7 @@ pub struct BlockTransactionUserCommand {
 }
 #[Object]
 impl BlockTransactionUserCommand {
-    pub async fn amount(&self) -> Option<f64> {
+    pub async fn amount(&self) -> f64 {
         self.amount
     }
     pub async fn block_height(&self) -> Option<i64> {
@@ -206,7 +206,7 @@ impl BlockTransactionUserCommand {
     pub async fn failure_reason(&self) -> Option<String> {
         self.failure_reason.clone()
     }
-    pub async fn fee(&self) -> Option<f64> {
+    pub async fn fee(&self) -> f64 {
         self.fee
     }
     pub async fn fee_payer(&self) -> Option<BlockTransactionUserCommandFeePayer> {
@@ -215,16 +215,16 @@ impl BlockTransactionUserCommand {
     pub async fn fee_token(&self) -> Option<i64> {
         self.fee_token
     }
-    pub async fn from(&self) -> Option<String> {
+    pub async fn from(&self) -> String {
         self.from.clone()
     }
     pub async fn from_account(&self) -> Option<BlockTransactionUserCommandFromAccount> {
         self.from_account.clone()
     }
-    pub async fn hash(&self) -> Option<String> {
+    pub async fn hash(&self) -> String {
         self.hash.clone()
     }
-    pub async fn id(&self) -> Option<String> {
+    pub async fn id(&self) -> String {
         self.id.clone()
     }
     pub async fn is_delegation(&self) -> Option<bool> {
@@ -245,7 +245,7 @@ impl BlockTransactionUserCommand {
     pub async fn source(&self) -> Option<BlockTransactionUserCommandSource> {
         self.source.clone()
     }
-    pub async fn to(&self) -> Option<String> {
+    pub async fn to(&self) -> String {
         self.to.clone()
     }
     pub async fn to_account(&self) -> Option<BlockTransactionUserCommandToAccount> {
@@ -257,15 +257,15 @@ impl BlockTransactionUserCommand {
 }
 #[derive(Debug, Clone)]
 pub struct DelegationTotal {
-    pub count_delegates: Option<i64>,
-    pub total_delegated: Option<f64>,
+    pub count_delegates: i64,
+    pub total_delegated: f64,
 }
 #[Object]
 impl DelegationTotal {
-    pub async fn count_delegates(&self) -> Option<i64> {
+    pub async fn count_delegates(&self) -> i64 {
         self.count_delegates
     }
-    pub async fn total_delegated(&self) -> Option<f64> {
+    pub async fn total_delegated(&self) -> f64 {
         self.total_delegated
     }
 }
@@ -279,17 +279,17 @@ impl BlockWinnerAccount {
     pub async fn balance(&self) -> BlockWinnerAccountBalance {
         self.balance.clone()
     }
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
 }
 #[derive(Debug, Clone)]
 pub struct TransactionReceiver {
-    pub public_key: Option<String>,
+    pub public_key: String,
 }
 #[Object]
 impl TransactionReceiver {
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
 }
@@ -322,25 +322,25 @@ pub struct Stake {
 }
 #[Object]
 impl Stake {
-    pub async fn balance(&self) -> Option<f64> {
+    pub async fn balance(&self) -> f64 {
         self.balance
     }
-    pub async fn chain_id(&self) -> Option<String> {
+    pub async fn chain_id(&self) -> String {
         self.chain_id.clone()
     }
-    pub async fn delegate(&self) -> Option<String> {
+    pub async fn delegate(&self) -> String {
         self.delegate.clone()
     }
     pub async fn delegation_totals(&self) -> DelegationTotal {
         self.delegation_totals.clone()
     }
-    pub async fn epoch(&self) -> Option<i64> {
+    pub async fn epoch(&self) -> i64 {
         self.epoch
     }
-    pub async fn ledger_hash(&self) -> Option<String> {
+    pub async fn ledger_hash(&self) -> String {
         self.ledger_hash.clone()
     }
-    pub async fn nonce(&self) -> Option<i64> {
+    pub async fn nonce(&self) -> i64 {
         self.nonce
     }
     pub async fn permissions(&self) -> Option<StakePermission> {
@@ -349,19 +349,19 @@ impl Stake {
     pub async fn pk(&self) -> Option<String> {
         self.pk.clone()
     }
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
-    pub async fn receipt_chain_hash(&self) -> Option<String> {
+    pub async fn receipt_chain_hash(&self) -> String {
         self.receipt_chain_hash.clone()
     }
     pub async fn timing(&self) -> Option<StakeTiming> {
         self.timing.clone()
     }
-    pub async fn token(&self) -> Option<i64> {
+    pub async fn token(&self) -> i64 {
         self.token
     }
-    pub async fn voting_for(&self) -> Option<String> {
+    pub async fn voting_for(&self) -> String {
         self.voting_for.clone()
     }
 }
@@ -392,40 +392,40 @@ pub struct Nextstake {
 }
 #[Object]
 impl Nextstake {
-    pub async fn balance(&self) -> Option<f64> {
+    pub async fn balance(&self) -> f64 {
         self.balance
     }
-    pub async fn delegate(&self) -> Option<String> {
+    pub async fn delegate(&self) -> String {
         self.delegate.clone()
     }
-    pub async fn ledger_hash(&self) -> Option<String> {
+    pub async fn ledger_hash(&self) -> String {
         self.ledger_hash.clone()
     }
     pub async fn next_delegation_totals(&self) -> NextDelegationTotal {
         self.next_delegation_totals.clone()
     }
-    pub async fn nonce(&self) -> Option<i64> {
+    pub async fn nonce(&self) -> i64 {
         self.nonce
     }
     pub async fn permissions(&self) -> Option<NextstakePermission> {
         self.permissions.clone()
     }
-    pub async fn pk(&self) -> Option<String> {
+    pub async fn pk(&self) -> String {
         self.pk.clone()
     }
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
-    pub async fn receipt_chain_hash(&self) -> Option<String> {
+    pub async fn receipt_chain_hash(&self) -> String {
         self.receipt_chain_hash.clone()
     }
     pub async fn timing(&self) -> Option<NextstakeTiming> {
         self.timing.clone()
     }
-    pub async fn token(&self) -> Option<i64> {
+    pub async fn token(&self) -> i64 {
         self.token
     }
-    pub async fn voting_for(&self) -> Option<String> {
+    pub async fn voting_for(&self) -> String {
         self.voting_for.clone()
     }
 }
@@ -444,22 +444,22 @@ impl Snark {
     pub async fn block(&self) -> Block {
         self.block.clone()
     }
-    pub async fn block_height(&self) -> Option<i64> {
+    pub async fn block_height(&self) -> i64 {
         self.block_height
     }
-    pub async fn canonical(&self) -> Option<bool> {
+    pub async fn canonical(&self) -> bool {
         self.canonical
     }
-    pub async fn date_time(&self) -> Option<DateTime> {
+    pub async fn date_time(&self) -> DateTime {
         self.date_time.clone()
     }
-    pub async fn fee(&self) -> Option<f64> {
+    pub async fn fee(&self) -> f64 {
         self.fee
     }
-    pub async fn prover(&self) -> Option<String> {
+    pub async fn prover(&self) -> String {
         self.prover.clone()
     }
-    pub async fn work_ids(&self) -> Option<Vec<Option<i64>>> {
+    pub async fn work_ids(&self) -> Vec<Option<i64>> {
         self.work_ids.clone()
     }
 }
@@ -515,11 +515,11 @@ impl BlockTransactionUserCommandSource {
 }
 #[derive(Debug, Clone)]
 pub struct BlockCreatorAccount {
-    pub public_key: Option<String>,
+    pub public_key: String,
 }
 #[Object]
 impl BlockCreatorAccount {
-    pub async fn public_key(&self) -> Option<String> {
+    pub async fn public_key(&self) -> String {
         self.public_key.clone()
     }
 }
@@ -664,31 +664,31 @@ impl Query {
 }
 #[derive(Debug, Clone)]
 pub struct BlockSnarkJob {
-    pub block_height: Option<i64>,
-    pub block_state_hash: Option<String>,
-    pub date_time: Option<DateTime>,
-    pub fee: Option<i64>,
-    pub prover: Option<String>,
-    pub work_ids: Option<Vec<Option<i64>>>,
+    pub block_height: i64,
+    pub block_state_hash: String,
+    pub date_time: DateTime,
+    pub fee: i64,
+    pub prover: String,
+    pub work_ids: Vec<Option<i64>>,
 }
 #[Object]
 impl BlockSnarkJob {
-    pub async fn block_height(&self) -> Option<i64> {
+    pub async fn block_height(&self) -> i64 {
         self.block_height
     }
-    pub async fn block_state_hash(&self) -> Option<String> {
+    pub async fn block_state_hash(&self) -> String {
         self.block_state_hash.clone()
     }
-    pub async fn date_time(&self) -> Option<DateTime> {
+    pub async fn date_time(&self) -> DateTime {
         self.date_time.clone()
     }
-    pub async fn fee(&self) -> Option<i64> {
+    pub async fn fee(&self) -> i64 {
         self.fee
     }
-    pub async fn prover(&self) -> Option<String> {
+    pub async fn prover(&self) -> String {
         self.prover.clone()
     }
-    pub async fn work_ids(&self) -> Option<Vec<Option<i64>>> {
+    pub async fn work_ids(&self) -> Vec<Option<i64>> {
         self.work_ids.clone()
     }
 }
@@ -697,10 +697,10 @@ pub struct Feetransfer {
     pub block_height: Option<i64>,
     pub block_state_hash: Option<Block>,
     pub canonical: Option<bool>,
-    pub date_time: Option<DateTime>,
-    pub fee: Option<i64>,
-    pub recipient: Option<String>,
-    pub r#type: Option<String>,
+    pub date_time: DateTime,
+    pub fee: i64,
+    pub recipient: String,
+    pub r#type: String,
 }
 #[Object]
 impl Feetransfer {
@@ -713,16 +713,16 @@ impl Feetransfer {
     pub async fn canonical(&self) -> Option<bool> {
         self.canonical
     }
-    pub async fn date_time(&self) -> Option<DateTime> {
+    pub async fn date_time(&self) -> DateTime {
         self.date_time.clone()
     }
-    pub async fn fee(&self) -> Option<i64> {
+    pub async fn fee(&self) -> i64 {
         self.fee
     }
-    pub async fn recipient(&self) -> Option<String> {
+    pub async fn recipient(&self) -> String {
         self.recipient.clone()
     }
-    pub async fn r#type(&self) -> Option<String> {
+    pub async fn r#type(&self) -> String {
         self.r#type.clone()
     }
 }
@@ -773,12 +773,12 @@ pub struct Transaction {
     pub block_height: i64,
     pub canonical: bool,
     pub date_time: Option<DateTime>,
-    pub failure_reason: Option<String>,
-    pub fee: Option<f64>,
+    pub failure_reason: String,
+    pub fee: f64,
     pub fee_token: Option<i64>,
     pub from: Option<String>,
-    pub hash: Option<String>,
-    pub id: Option<String>,
+    pub hash: String,
+    pub id: String,
     pub is_delegation: Option<bool>,
     pub kind: Option<String>,
     pub memo: String,
@@ -789,25 +789,25 @@ pub struct Transaction {
 }
 #[Object]
 impl Transaction {
-    pub async fn amount(&self) -> Option<f64> {
+    pub async fn amount(&self) -> f64 {
         self.amount
     }
     pub async fn block(&self) -> TransactionBlock {
         self.block.clone()
     }
-    pub async fn block_height(&self) -> Option<i64> {
+    pub async fn block_height(&self) -> i64 {
         self.block_height
     }
-    pub async fn canonical(&self) -> Option<bool> {
+    pub async fn canonical(&self) -> bool {
         self.canonical
     }
     pub async fn date_time(&self) -> Option<DateTime> {
         self.date_time.clone()
     }
-    pub async fn failure_reason(&self) -> Option<String> {
+    pub async fn failure_reason(&self) -> String {
         self.failure_reason.clone()
     }
-    pub async fn fee(&self) -> Option<f64> {
+    pub async fn fee(&self) -> f64 {
         self.fee
     }
     pub async fn fee_payer(&self, ctx: &Context<'_>) -> Result<Option<TransactionFeePayer>> {
@@ -826,10 +826,10 @@ impl Transaction {
             .transaction_from_account(ctx, self)
             .await
     }
-    pub async fn hash(&self) -> Option<String> {
+    pub async fn hash(&self) -> String {
         self.hash.clone()
     }
-    pub async fn id(&self) -> Option<String> {
+    pub async fn id(&self) -> String {
         self.id.clone()
     }
     pub async fn is_delegation(&self) -> Option<bool> {
@@ -838,10 +838,10 @@ impl Transaction {
     pub async fn kind(&self) -> Option<String> {
         self.kind.clone()
     }
-    pub async fn memo(&self) -> Option<String> {
+    pub async fn memo(&self) -> String {
         self.memo.clone()
     }
-    pub async fn nonce(&self) -> Option<i64> {
+    pub async fn nonce(&self) -> i64 {
         self.nonce
     }
     pub async fn receiver(&self) -> TransactionReceiver {
@@ -852,7 +852,7 @@ impl Transaction {
             .transaction_source(ctx, self)
             .await
     }
-    pub async fn to(&self) -> Option<String> {
+    pub async fn to(&self) -> String {
         self.to.clone()
     }
     pub async fn to_account(&self, ctx: &Context<'_>) -> Result<Option<TransactionToAccount>> {
@@ -880,7 +880,7 @@ pub struct BlockWinnerAccountBalance {
     pub liquid: Option<i64>,
     pub locked: Option<Long>,
     pub state_hash: Option<String>,
-    pub total: Option<String>,
+    pub total: String,
     pub unknown: Option<Long>,
 }
 #[Object]
@@ -897,7 +897,7 @@ impl BlockWinnerAccountBalance {
     pub async fn state_hash(&self) -> Option<String> {
         self.state_hash.clone()
     }
-    pub async fn total(&self) -> Option<String> {
+    pub async fn total(&self) -> String {
         self.total.clone()
     }
     pub async fn unknown(&self) -> Option<Long> {
@@ -918,7 +918,7 @@ impl BlockProtocolState {
     pub async fn consensus_state(&self) -> BlockProtocolStateConsensusState {
         self.consensus_state.clone()
     }
-    pub async fn previous_state_hash(&self) -> Option<String> {
+    pub async fn previous_state_hash(&self) -> String {
         self.previous_state_hash.clone()
     }
 }
@@ -962,7 +962,7 @@ impl DeleteManyPayload {
 pub struct BlockProtocolStateConsensusState {
     pub block_height: Option<i64>,
     pub blockchain_length: Option<i64>,
-    pub epoch: Option<i64>,
+    pub epoch: i64,
     pub epoch_count: Option<i64>,
     pub has_ancestor_in_same_checkpoint_window: Option<bool>,
     pub last_vrf_output: Option<String>,
@@ -981,7 +981,7 @@ impl BlockProtocolStateConsensusState {
     pub async fn blockchain_length(&self) -> Option<i64> {
         self.blockchain_length
     }
-    pub async fn epoch(&self) -> Option<i64> {
+    pub async fn epoch(&self) -> i64 {
         self.epoch
     }
     pub async fn epoch_count(&self) -> Option<i64> {
@@ -999,10 +999,10 @@ impl BlockProtocolStateConsensusState {
     pub async fn next_epoch_data(&self) -> Option<BlockProtocolStateConsensusStateNextEpochDatum> {
         self.next_epoch_data.clone()
     }
-    pub async fn slot(&self) -> Option<i64> {
+    pub async fn slot(&self) -> i64 {
         self.slot
     }
-    pub async fn slot_since_genesis(&self) -> Option<i64> {
+    pub async fn slot_since_genesis(&self) -> i64 {
         self.slot_since_genesis
     }
     pub async fn staking_epoch_data(
@@ -1010,7 +1010,7 @@ impl BlockProtocolStateConsensusState {
     ) -> Option<BlockProtocolStateConsensusStateStakingEpochDatum> {
         self.staking_epoch_data.clone()
     }
-    pub async fn total_currency(&self) -> Option<f64> {
+    pub async fn total_currency(&self) -> f64 {
         self.total_currency
     }
 }
@@ -1062,8 +1062,8 @@ impl NextstakeTiming {
 }
 #[derive(Debug, Clone)]
 pub struct Block {
-    pub block_height: Option<i64>,
-    pub canonical: Option<bool>,
+    pub block_height: i64,
+    pub canonical: bool,
     pub creator: Option<String>,
     pub creator_account: BlockCreatorAccount,
     pub date_time: DateTime,
@@ -1079,10 +1079,10 @@ pub struct Block {
 }
 #[Object]
 impl Block {
-    pub async fn block_height(&self) -> Option<i64> {
+    pub async fn block_height(&self) -> i64 {
         self.block_height
     }
-    pub async fn canonical(&self) -> Option<bool> {
+    pub async fn canonical(&self) -> bool {
         self.canonical
     }
     pub async fn creator(&self) -> Option<String> {
@@ -1091,7 +1091,7 @@ impl Block {
     pub async fn creator_account(&self) -> BlockCreatorAccount {
         self.creator_account.clone()
     }
-    pub async fn date_time(&self) -> Option<DateTime> {
+    pub async fn date_time(&self) -> DateTime {
         self.date_time.clone()
     }
     pub async fn protocol_state(&self) -> BlockProtocolState {
@@ -1100,13 +1100,13 @@ impl Block {
     pub async fn received_time(&self) -> Option<DateTime> {
         self.received_time.clone()
     }
-    pub async fn snark_fees(&self) -> Option<String> {
+    pub async fn snark_fees(&self) -> String {
         self.snark_fees.clone()
     }
     pub async fn snark_jobs(&self) -> Vec<Option<BlockSnarkJob>> {
         self.snark_jobs.clone()
     }
-    pub async fn state_hash(&self) -> Option<String> {
+    pub async fn state_hash(&self) -> String {
         self.state_hash.clone()
     }
     pub async fn state_hash_field(&self) -> Option<String> {
@@ -1115,7 +1115,7 @@ impl Block {
     pub async fn transactions(&self) -> BlockTransaction {
         self.transactions.clone()
     }
-    pub async fn tx_fees(&self) -> Option<String> {
+    pub async fn tx_fees(&self) -> String {
         self.tx_fees.clone()
     }
     pub async fn winner_account(&self) -> BlockWinnerAccount {
@@ -1158,5 +1158,29 @@ impl BlockProtocolStateConsensusStateStakingEpochDatumLedger {
     }
     pub async fn total_currency(&self) -> Option<f64> {
         self.total_currency
+    }
+}
+#[derive(Debug, Clone)]
+pub struct TransactionBlock {
+    pub date_time: DateTime,
+    pub state_hash: String,
+}
+#[Object]
+impl TransactionBlock {
+    pub async fn date_time(&self) -> DateTime {
+        self.date_time.clone()
+    }
+    pub async fn state_hash(&self) -> String {
+        self.state_hash.clone()
+    }
+}
+#[derive(Debug, Clone)]
+pub struct SnarkBlock {
+    pub state_hash: String,
+}
+#[Object]
+impl SnarkBlock {
+    pub async fn state_hash(&self) -> String {
+        self.state_hash.clone()
     }
 }
