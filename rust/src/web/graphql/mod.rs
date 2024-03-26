@@ -3,7 +3,7 @@ mod gen;
 mod query_data;
 mod transactions;
 
-use self::gen::{schema_builder, Mutation, Query};
+use self::gen::{schema_builder, Query};
 use crate::store::IndexerStore;
 use actix_web::{http::header::ContentType, HttpResponse};
 use async_graphql::{http::GraphiQLSource, Context, EmptySubscription, Schema};
@@ -18,7 +18,9 @@ pub(crate) async fn graphiql() -> actix_web::Result<HttpResponse> {
         .body(GraphiQLSource::build().endpoint(ENDPOINT_GRAPHQL).finish()))
 }
 
-pub(crate) fn build_schema(store: Arc<IndexerStore>) -> Schema<Query, Mutation, EmptySubscription> {
+pub(crate) fn build_schema(
+    store: Arc<IndexerStore>,
+) -> Schema<Query, EmptyMutation, EmptySubscription> {
     schema_builder().data(store).finish()
 }
 

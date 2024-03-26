@@ -16,6 +16,6 @@ pub use scalars::*;
 mod enums;
 use async_graphql::*;
 pub use enums::*;
-pub fn schema_builder() -> SchemaBuilder<Query, Mutation, EmptySubscription> {
-    Schema::build(Query {}, Mutation {}, EmptySubscription)
+pub fn schema_builder() -> SchemaBuilder<Query, EmptyMutation, EmptySubscription> {
+    Schema::build(Query {}, EmptyMutation {}, EmptySubscription)
 }

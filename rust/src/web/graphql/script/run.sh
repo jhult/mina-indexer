@@ -50,7 +50,7 @@ download() {
     for file in "${query_files[@]}"; do
         local path="queries/$file.$EXT"
         curl --output "../$path" "$GH_EXPLORER_GRAPHQL/$path"
-        cat "../$path" >> "combined.$EXT"
+        cat "../$path" >> "../queries/combined.$EXT"
     done
 }
 

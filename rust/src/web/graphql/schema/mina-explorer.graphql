@@ -2694,57 +2694,6 @@ input SnarkQueryInput {
   canonical_exists: Boolean
 }
 
-type Mutation {
-  deleteManyBlocks(query: BlockQueryInput): DeleteManyPayload
-  deleteManyFeetransfers(query: FeetransferQueryInput): DeleteManyPayload
-  deleteManyNextstakes(query: NextstakeQueryInput): DeleteManyPayload
-  deleteManySnarks(query: SnarkQueryInput): DeleteManyPayload
-  deleteManyStakes(query: StakeQueryInput): DeleteManyPayload
-  deleteManyTransactions(query: TransactionQueryInput): DeleteManyPayload
-  deleteOneBlock(query: BlockQueryInput!): Block
-  deleteOneFeetransfer(query: FeetransferQueryInput!): Feetransfer
-  deleteOneNextstake(query: NextstakeQueryInput!): Nextstake
-  deleteOneSnark(query: SnarkQueryInput!): Snark
-  deleteOneStake(query: StakeQueryInput!): Stake
-  deleteOneTransaction(query: TransactionQueryInput!): Transaction
-  insertManyBlocks(data: [BlockInsertInput!]!): InsertManyPayload
-  insertManyFeetransfers(data: [FeetransferInsertInput!]!): InsertManyPayload
-  insertManyNextstakes(data: [NextstakeInsertInput!]!): InsertManyPayload
-  insertManySnarks(data: [SnarkInsertInput!]!): InsertManyPayload
-  insertManyStakes(data: [StakeInsertInput!]!): InsertManyPayload
-  insertManyTransactions(data: [TransactionInsertInput!]!): InsertManyPayload
-  insertOneBlock(data: BlockInsertInput!): Block
-  insertOneFeetransfer(data: FeetransferInsertInput!): Feetransfer
-  insertOneNextstake(data: NextstakeInsertInput!): Nextstake
-  insertOneSnark(data: SnarkInsertInput!): Snark
-  insertOneStake(data: StakeInsertInput!): Stake
-  insertOneTransaction(data: TransactionInsertInput!): Transaction
-  replaceOneBlock(query: BlockQueryInput, data: BlockInsertInput!): Block
-  replaceOneFeetransfer(query: FeetransferQueryInput, data: FeetransferInsertInput!): Feetransfer
-  replaceOneNextstake(query: NextstakeQueryInput, data: NextstakeInsertInput!): Nextstake
-  replaceOneSnark(query: SnarkQueryInput, data: SnarkInsertInput!): Snark
-  replaceOneStake(query: StakeQueryInput, data: StakeInsertInput!): Stake
-  replaceOneTransaction(query: TransactionQueryInput, data: TransactionInsertInput!): Transaction
-  updateManyBlocks(query: BlockQueryInput, set: BlockUpdateInput!): UpdateManyPayload
-  updateManyFeetransfers(set: FeetransferUpdateInput!, query: FeetransferQueryInput): UpdateManyPayload
-  updateManyNextstakes(query: NextstakeQueryInput, set: NextstakeUpdateInput!): UpdateManyPayload
-  updateManySnarks(set: SnarkUpdateInput!, query: SnarkQueryInput): UpdateManyPayload
-  updateManyStakes(query: StakeQueryInput, set: StakeUpdateInput!): UpdateManyPayload
-  updateManyTransactions(query: TransactionQueryInput, set: TransactionUpdateInput!): UpdateManyPayload
-  updateOneBlock(query: BlockQueryInput, set: BlockUpdateInput!): Block
-  updateOneFeetransfer(set: FeetransferUpdateInput!, query: FeetransferQueryInput): Feetransfer
-  updateOneNextstake(query: NextstakeQueryInput, set: NextstakeUpdateInput!): Nextstake
-  updateOneSnark(query: SnarkQueryInput, set: SnarkUpdateInput!): Snark
-  updateOneStake(query: StakeQueryInput, set: StakeUpdateInput!): Stake
-  updateOneTransaction(query: TransactionQueryInput, set: TransactionUpdateInput!): Transaction
-  upsertOneBlock(query: BlockQueryInput, data: BlockInsertInput!): Block
-  upsertOneFeetransfer(query: FeetransferQueryInput, data: FeetransferInsertInput!): Feetransfer
-  upsertOneNextstake(data: NextstakeInsertInput!, query: NextstakeQueryInput): Nextstake
-  upsertOneSnark(query: SnarkQueryInput, data: SnarkInsertInput!): Snark
-  upsertOneStake(query: StakeQueryInput, data: StakeInsertInput!): Stake
-  upsertOneTransaction(query: TransactionQueryInput, data: TransactionInsertInput!): Transaction
-}
-
 input TransactionFeePayerUpdateInput {
   token: Int
   token_inc: Int
@@ -2894,5 +2843,4 @@ input StakeQueryInput {
 }
 schema {
   query: Query
-  mutation: Mutation
 }
