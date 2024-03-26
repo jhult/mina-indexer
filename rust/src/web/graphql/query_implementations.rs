@@ -2,6 +2,9 @@ use super::{db, gen::*, transactions::TX_COLUMN};
 use crate::{
     block::{store::BlockStore, BlockHash},
     canonicity::{store::CanonicityStore, Canonicity},
+    protocol::serialization_types::staged_ledger_diff::{
+        UserCommandWithStatusJson, UserCommandWithStatusV1,
+    },
 };
 use async_graphql::{Context, Result};
 use speedb::{Direction, IteratorMode};
@@ -233,14 +236,14 @@ impl DataSource {
 
         let mut transactions: Vec<Option<Transaction>> = Vec::new();
 
+        //date_time_gte == RFC 2822 date format
         let iter = if let Some(date_time_gte) = input.date_time_gte {
-            // TODO: what incoming format and timezone? UTC?
             let bytes = chrono::DateTime::parse_from_rfc2822(&date_time_gte.0)
                 .unwrap()
                 .timestamp_millis()
                 .to_string()
                 .into_bytes();
-            //let key = Base32Hex.encode(&bytes);
+            let key = data_encoding::BASE32HEX.encode(&bytes);
 
             let mode = IteratorMode::From(&key.into_bytes(), Direction::Forward);
             let mut iter = db.database.iterator_cf(TX_COLUMN.as_ref(), mode);
@@ -254,36 +257,35 @@ impl DataSource {
         for entry in iter {
             let (key, value) = entry.unwrap();
 
-            // TODO: fix
-            //let key = Transaction {}; //
-            // TransactionKey::from_slice(&key).unwrap();
+            let key = TransactionKey::from_slice(&key).unwrap();
+            TransactionKey::from_slice(&key).unwrap();
 
-            //let cmd = UserCommandWithStatusV1::new();
-            // let cmd = bcs::from_bytes::<UserCommandWithStatusV1>(&value)
-            //     .unwrap()
-            //     .inner();
+            let cmd = bcs::from_bytes::<UserCommandWithStatusV1>(&value)
+                .unwrap()
+                .inner();
 
-            // let transaction = Transaction::from_cmd(
-            //     UserCommandWithStatusJson::from(cmd),
-            //     key.height() as i32,
-            //     key.timestamp(),
-            //     key.hash(),
-            // );
+            let transaction = Transaction::from_cmd(
+                UserCommandWithStatusJson::from(cmd),
+                key.height() as i32,
+                key.timestamp(),
+                key.hash(),
+            );
 
-            // // If query is provided, only add transactions that satisfy the
-            // query if let Some(ref query_input) = query {
-            //     if query_input.matches(&transaction) {
-            //         transactions.push(Some(transaction));
-            //     }
-            // }
-            // // If no query is provided, add all transactions
-            // else {
-            //     transactions.push(Some(transaction));
-            // }
-            // // Early break if the transactions reach the query limit
-            // if transactions.len() >= limit_idx {
-            //     break;
-            // }
+            // If query is provided, only add transactions that satisfy the query
+            // TODO: is this pushing the same output no matter what?
+            // Do we even need to support no query?
+            let output = if input.matches(&transaction) {
+                transaction
+            } else {
+                // If no query is provided, add all transactions
+                transaction
+            };
+            transactions.push(Some(output));
+
+            // Early break if the transactions reach the query limit
+            if transactions.len() >= limit_idx {
+                break;
+            }
         }
 
         match sort_by {
@@ -293,7 +295,7 @@ impl DataSource {
             _ => transactions.sort_by(|Some(a), Some(b)| b.nonce.cmp(&a.nonce)),
         }
 
-        //Ok(Some(transactions))
+        Ok(Some(transactions));
         panic!();
     }
 
