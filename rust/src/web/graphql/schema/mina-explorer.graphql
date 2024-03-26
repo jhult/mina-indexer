@@ -1623,10 +1623,10 @@ type Feetransfer {
   blockHeight: Int
   blockStateHash: Block
   canonical: Boolean
-  dateTime: DateTime
-  fee: Int
-  recipient: String
-  type: String
+  dateTime: DateTime!
+  fee: Int!
+  recipient: String!
+  type: String!
 }
 
 input BlockSnarkJobUpdateInput {

@@ -740,10 +740,10 @@ impl BlockSnarkJob {
 pub struct Feetransfer {
     pub block_height: Option<i64>,
     pub canonical: Option<bool>,
-    pub date_time: Option<DateTime>,
-    pub fee: Option<i64>,
-    pub recipient: Option<String>,
-    pub r#type: Option<String>,
+    pub date_time: DateTime,
+    pub fee: i64,
+    pub recipient: String,
+    pub r#type: String,
 }
 #[Object]
 impl Feetransfer {
@@ -758,16 +758,16 @@ impl Feetransfer {
     pub async fn canonical(&self) -> Option<bool> {
         self.canonical
     }
-    pub async fn date_time(&self) -> Option<DateTime> {
+    pub async fn date_time(&self) -> DateTime {
         self.date_time.clone()
     }
-    pub async fn fee(&self) -> Option<i64> {
+    pub async fn fee(&self) -> i64 {
         self.fee
     }
-    pub async fn recipient(&self) -> Option<String> {
+    pub async fn recipient(&self) -> String {
         self.recipient.clone()
     }
-    pub async fn r#type(&self) -> Option<String> {
+    pub async fn r#type(&self) -> String {
         self.r#type.clone()
     }
 }
