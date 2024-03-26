@@ -470,36 +470,36 @@ impl Nextstake {
 }
 #[derive(Debug, Clone)]
 pub struct Snark {
-    pub block_height: Option<i64>,
-    pub canonical: Option<bool>,
-    pub date_time: Option<DateTime>,
-    pub fee: Option<f64>,
-    pub prover: Option<String>,
-    pub work_ids: Option<Vec<Option<i64>>>,
+    pub block_height: i64,
+    pub canonical: bool,
+    pub date_time: DateTime,
+    pub fee: f64,
+    pub prover: String,
+    pub work_ids: Vec<Option<i64>>,
 }
 #[Object]
 impl Snark {
-    pub async fn block(&self, ctx: &Context<'_>) -> Result<Option<Block>> {
+    pub async fn block(&self, ctx: &Context<'_>) -> Result<Block> {
         ctx.data_unchecked::<DataSource>()
             .snark_block(ctx, self)
             .await
     }
-    pub async fn block_height(&self) -> Option<i64> {
+    pub async fn block_height(&self) -> i64 {
         self.block_height
     }
-    pub async fn canonical(&self) -> Option<bool> {
+    pub async fn canonical(&self) -> bool {
         self.canonical
     }
-    pub async fn date_time(&self) -> Option<DateTime> {
+    pub async fn date_time(&self) -> DateTime {
         self.date_time.clone()
     }
-    pub async fn fee(&self) -> Option<f64> {
+    pub async fn fee(&self) -> f64 {
         self.fee
     }
-    pub async fn prover(&self) -> Option<String> {
+    pub async fn prover(&self) -> String {
         self.prover.clone()
     }
-    pub async fn work_ids(&self) -> Option<Vec<Option<i64>>> {
+    pub async fn work_ids(&self) -> Vec<Option<i64>> {
         self.work_ids.clone()
     }
 }
@@ -1240,6 +1240,16 @@ impl TransactionBlock {
     pub async fn date_time(&self) -> DateTime {
         self.date_time.clone()
     }
+    pub async fn state_hash(&self) -> String {
+        self.state_hash.clone()
+    }
+}
+#[derive(Debug, Clone)]
+pub struct SnarkBlock {
+    pub state_hash: String,
+}
+#[Object]
+impl SnarkBlock {
     pub async fn state_hash(&self) -> String {
         self.state_hash.clone()
     }

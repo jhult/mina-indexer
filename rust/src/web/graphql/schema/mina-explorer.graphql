@@ -941,13 +941,13 @@ input BlockTransactionUserCommandFromAccountQueryInput {
 }
 
 type Snark {
-  block: Block
-  blockHeight: Int
-  canonical: Boolean
-  dateTime: DateTime
-  fee: Float
-  prover: String
-  workIds: [Int]
+  block: Block!
+  blockHeight: Int!
+  canonical: Boolean!
+  dateTime: DateTime!
+  fee: Float!
+  prover: String!
+  workIds: [Int]!
 }
 
 input BlockProtocolStateInsertInput {
@@ -2848,5 +2848,9 @@ schema {
 
 type TransactionBlock {
   dateTime: DateTime!
+  stateHash: String!
+}
+
+type SnarkBlock {
   stateHash: String!
 }
