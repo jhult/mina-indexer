@@ -10,10 +10,9 @@ use crate::{
         version_bytes,
     },
     store::IndexerStore,
-    web::rest::locked_balances::LockedBalances,
+    web::{millis_to_iso_date_string, rest::locked_balances::LockedBalances},
 };
 use actix_web::{get, http::header::ContentType, web::Data, HttpResponse};
-use chrono::DateTime;
 use serde::Serialize;
 use std::sync::Arc;
 use tracing::debug;
@@ -50,12 +49,6 @@ impl LedgerHash {
     }
 }
 
-fn millis_to_date_string(millis: i64) -> String {
-    let date_time = DateTime::from_timestamp_millis(millis).unwrap();
-    // RFC 2822 date format
-    date_time.format("%a, %d %b %Y %H:%M:%S GMT").to_string()
-}
-
 fn calculate_summary(
     best_tip: &PrecomputedBlock,
     _best_ledger: &Ledger,
@@ -63,7 +56,7 @@ fn calculate_summary(
 ) -> Option<BlockchainSummary> {
     let blockchain_length = best_tip.blockchain_length;
     let chain_id = "5f704cc0c82e0ed70e873f0893d7e06f148524e3f0bdae2afb02e7819a0c24d1".to_owned();
-    let date_time = millis_to_date_string(best_tip.timestamp().try_into().unwrap());
+    let date_time = millis_to_iso_date_string(best_tip.timestamp().try_into().unwrap());
     let epoch = best_tip.consensus_state().epoch_count.inner().inner();
     let global_slot = best_tip
         .consensus_state()

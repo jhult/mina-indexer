@@ -4,10 +4,10 @@ mod query_implementations;
 mod transactions;
 
 use self::gen::{schema_builder, Query};
+use super::millis_to_rfc_date_string;
 use crate::store::IndexerStore;
 use actix_web::{http::header::ContentType, HttpResponse};
 use async_graphql::{http::GraphiQLSource, Context, EmptySubscription, Schema};
-use chrono::{DateTime, SecondsFormat};
 use std::sync::Arc;
 
 pub const ENDPOINT_GRAPHQL: &str = "/graphql";
@@ -29,10 +29,9 @@ pub(crate) fn db<'ctx>(ctx: &Context) -> &'ctx Arc<IndexerStore> {
         .expect("Database should be in the context")
 }
 
-/// convert epoch millis to an ISO 8601 formatted date
-pub(crate) fn millis_to_date_string(millis: i64) -> String {
-    let date_time = DateTime::from_timestamp_millis(millis).unwrap();
-    date_time.to_rfc3339_opts(SecondsFormat::Millis, true)
+// convert epoch milliseconds to a gen::DateTime scalar
+pub(crate) fn date_time_to_scalar(millis: i64) -> gen::DateTime {
+    gen::DateTime(millis_to_rfc_date_string(millis))
 }
 
 // JSON utility
