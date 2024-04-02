@@ -62,7 +62,7 @@ pub struct ServerArgs {
     genesis_hash: String,
 
     /// Directory containing the precomputed blocks
-    #[arg(long)]
+    #[arg(long, default_value = concat!(env!("HOME"), "/.mina-indexer/blocks"))]
     blocks_dir: Option<PathBuf>,
 
     /// Directory to watch for new precomputed blocks
@@ -70,7 +70,7 @@ pub struct ServerArgs {
     block_watch_dir: Option<PathBuf>,
 
     /// Directory containing the staking ledgers
-    #[arg(long)]
+    #[arg(long, default_value = concat!(env!("HOME"), "/.mina-indexer/staking-ledgers"))]
     staking_ledgers_dir: Option<PathBuf>,
 
     /// Directory to watch for new staking ledgers
@@ -78,7 +78,7 @@ pub struct ServerArgs {
     staking_ledger_watch_dir: Option<PathBuf>,
 
     /// Path to directory for speedb
-    #[arg(long, default_value = "/var/log/mina-indexer/database")]
+    #[arg(long, default_value = concat!(env!("HOME"), "/.mina-indexer/database"))]
     pub database_dir: PathBuf,
 
     /// Max stdout log level
