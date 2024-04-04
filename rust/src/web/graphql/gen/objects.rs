@@ -814,6 +814,7 @@ impl BlockTransactionUserCommandFromAccount {
 #[derive(Debug, Clone)]
 pub struct Transaction {
     pub amount: f64,
+    pub block: TransactionBlock,
     pub block_height: i64,
     pub canonical: bool,
     pub date_time: Option<DateTime>,
@@ -827,6 +828,7 @@ pub struct Transaction {
     pub kind: Option<String>,
     pub memo: String,
     pub nonce: i64,
+    pub receiver: TransactionReceiver,
     pub to: String,
     pub token: Option<i64>,
 }
@@ -835,10 +837,8 @@ impl Transaction {
     pub async fn amount(&self) -> f64 {
         self.amount
     }
-    pub async fn block(&self, ctx: &Context<'_>) -> Result<TransactionBlock> {
-        ctx.data_unchecked::<DataSource>()
-            .transaction_block(ctx, self)
-            .await
+    pub async fn block(&self) -> TransactionBlock {
+        self.block.clone()
     }
     pub async fn block_height(&self) -> i64 {
         self.block_height
@@ -889,10 +889,8 @@ impl Transaction {
     pub async fn nonce(&self) -> i64 {
         self.nonce
     }
-    pub async fn receiver(&self, ctx: &Context<'_>) -> Result<TransactionReceiver> {
-        ctx.data_unchecked::<DataSource>()
-            .transaction_receiver(ctx, self)
-            .await
+    pub async fn receiver(&self) -> TransactionReceiver {
+        self.receiver.clone()
     }
     pub async fn source(&self, ctx: &Context<'_>) -> Result<Option<TransactionSource>> {
         ctx.data_unchecked::<DataSource>()

@@ -203,14 +203,6 @@ impl DataSource {
         todo!()
     }
 
-    pub(crate) async fn transaction_block(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Transaction,
-    ) -> Result<TransactionBlock> {
-        todo!()
-    }
-
     pub(crate) async fn feetransfer_block_state_hash(
         &self,
         _ctx: &Context<'_>,

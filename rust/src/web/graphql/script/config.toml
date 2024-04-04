@@ -13,3 +13,13 @@ rename_items = "SCREAMING_SNAKE_CASE"
 [[resolver]]
 target_type = "Query"
 target_field = "type"
+
+[[resolver]]
+target_type = "Transaction"
+target_field = "block"
+resolver_type = "field"
+
+[[resolver]]
+target_type = "Transaction"
+target_field = "receiver"
+resolver_type = "field"
