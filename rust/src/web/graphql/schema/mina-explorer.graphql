@@ -1766,13 +1766,12 @@ input BlockProtocolStateConsensusStateNextEpochDatumLedgerQueryInput {
 
 type Transaction {
   amount: Float!
-  block: TransactionBlock!
-  blockHeight: Int!
-  canonical: Boolean!
-  dateTime: DateTime
-  failureReason: String!
-  fee: Float!
-  feePayer: TransactionFeePayer
+    block: TransactionBlock!
+    blockHeight: Int!
+    canonical: Boolean!
+    failureReason: String!
+    fee: Float!
+    feePayer: TransactionFeePayer
   feeToken: Int
   from: String
   fromAccount: TransactionFromAccount

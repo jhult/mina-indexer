@@ -51,12 +51,12 @@ impl TransactionQueryInput {
             }
         }
 
-        if self.date_time_gte.is_some() {
-            matches = matches && transaction.date_time >= self.date_time_gte;
+        if let Some(__) = &self.date_time_gte {
+            matches = matches && transaction.block.date_time >= *__;
         }
 
-        if self.date_time_lte.is_some() {
-            matches = matches && transaction.date_time <= self.date_time_lte;
+        if let Some(__) = &self.date_time_lte {
+            matches = matches && transaction.block.date_time <= *__;
         }
 
         matches
