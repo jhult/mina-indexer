@@ -772,7 +772,6 @@ pub struct Transaction {
     pub block: TransactionBlock,
     pub block_height: i64,
     pub canonical: bool,
-    pub date_time: Option<DateTime>,
     pub failure_reason: String,
     pub fee: f64,
     pub fee_token: Option<i64>,
@@ -800,9 +799,6 @@ impl Transaction {
     }
     pub async fn canonical(&self) -> bool {
         self.canonical
-    }
-    pub async fn date_time(&self) -> Option<DateTime> {
-        self.date_time.clone()
     }
     pub async fn failure_reason(&self) -> String {
         self.failure_reason.clone()
