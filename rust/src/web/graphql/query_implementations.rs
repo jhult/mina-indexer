@@ -163,46 +163,6 @@ impl DataSource {
         todo!()
     }
 
-    pub(crate) async fn transaction_to_account(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Transaction,
-    ) -> Result<Option<TransactionToAccount>> {
-        todo!()
-    }
-
-    pub(crate) async fn transaction_source(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Transaction,
-    ) -> Result<Option<TransactionSource>> {
-        todo!()
-    }
-
-    pub(crate) async fn transaction_receiver(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Transaction,
-    ) -> Result<TransactionReceiver> {
-        todo!()
-    }
-
-    pub(crate) async fn transaction_from_account(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Transaction,
-    ) -> Result<Option<TransactionFromAccount>> {
-        todo!()
-    }
-
-    pub(crate) async fn transaction_fee_payer(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Transaction,
-    ) -> Result<Option<TransactionFeePayer>> {
-        todo!()
-    }
-
     pub(crate) async fn feetransfer_block_state_hash(
         &self,
         _ctx: &Context<'_>,
