@@ -774,11 +774,9 @@ pub struct Transaction {
     pub canonical: bool,
     pub failure_reason: String,
     pub fee: f64,
-    pub fee_token: Option<i64>,
     pub from: Option<String>,
     pub hash: String,
     pub id: String,
-    pub is_delegation: Option<bool>,
     pub kind: Option<String>,
     pub memo: String,
     pub nonce: i64,
@@ -806,30 +804,14 @@ impl Transaction {
     pub async fn fee(&self) -> f64 {
         self.fee
     }
-    pub async fn fee_payer(&self, ctx: &Context<'_>) -> Result<Option<TransactionFeePayer>> {
-        ctx.data_unchecked::<DataSource>()
-            .transaction_fee_payer(ctx, self)
-            .await
-    }
-    pub async fn fee_token(&self) -> Option<i64> {
-        self.fee_token
-    }
     pub async fn from(&self) -> Option<String> {
         self.from.clone()
-    }
-    pub async fn from_account(&self, ctx: &Context<'_>) -> Result<Option<TransactionFromAccount>> {
-        ctx.data_unchecked::<DataSource>()
-            .transaction_from_account(ctx, self)
-            .await
     }
     pub async fn hash(&self) -> String {
         self.hash.clone()
     }
     pub async fn id(&self) -> String {
         self.id.clone()
-    }
-    pub async fn is_delegation(&self) -> Option<bool> {
-        self.is_delegation
     }
     pub async fn kind(&self) -> Option<String> {
         self.kind.clone()
@@ -843,18 +825,8 @@ impl Transaction {
     pub async fn receiver(&self) -> TransactionReceiver {
         self.receiver.clone()
     }
-    pub async fn source(&self, ctx: &Context<'_>) -> Result<Option<TransactionSource>> {
-        ctx.data_unchecked::<DataSource>()
-            .transaction_source(ctx, self)
-            .await
-    }
     pub async fn to(&self) -> String {
         self.to.clone()
-    }
-    pub async fn to_account(&self, ctx: &Context<'_>) -> Result<Option<TransactionToAccount>> {
-        ctx.data_unchecked::<DataSource>()
-            .transaction_to_account(ctx, self)
-            .await
     }
     pub async fn token(&self) -> Option<i64> {
         self.token
