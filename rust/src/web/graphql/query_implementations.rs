@@ -1,9 +1,11 @@
-use super::{db, gen::*, transactions::TX_COLUMN};
+use super::{db, gen::*, stakes::to_staking_account, transactions::TX_COLUMN};
 use crate::{
     block::{store::BlockStore, BlockHash},
     canonicity::{store::CanonicityStore, Canonicity},
+    ledger::{public_key::PublicKey, staking::AggregatedEpochStakeDelegations},
 };
 use async_graphql::{Context, Result};
+use rust_decimal::{prelude::ToPrimitive, Decimal};
 use speedb::{Direction, IteratorMode};
 
 pub struct DataSource;
@@ -11,13 +13,59 @@ pub struct DataSource;
 impl DataSource {
     pub(crate) async fn query_stakes(
         &self,
-        _ctx: &Context<'_>,
+        ctx: &Context<'_>,
         _p1: &Query,
-        _input: StakeQueryInput,
+        input: StakeQueryInput,
         _limit: Option<i64>,
         _sort_by: StakeSortByInput,
     ) -> Result<Vec<Option<Stake>>> {
-        todo!()
+        let epoch = match input.epoch {
+            Some(epoch) => epoch,
+            None => return Ok(vec![]),
+        };
+
+        let db = db(ctx);
+
+        let staking_ledger = match db.get_staking_ledger_at_epoch("mainnet", epoch as u32)? {
+            Some(staking_ledger) => staking_ledger,
+            None => return Ok(vec![]),
+        };
+
+        let accounts: Vec<Option<Stake>> = staking_ledger
+            .staking_ledger
+            .into_iter()
+            .map(|entry| {
+                let pk = entry.0;
+
+                let account = entry.1;
+                let balance_nanomina = account.balance;
+                let mut decimal = Decimal::from(balance_nanomina);
+                decimal.set_scale(9).ok();
+                let balance = decimal.to_f64().unwrap_or_default();
+                let nonce = account.nonce.unwrap_or_default() as i64;
+                let delegate = account.delegate.0;
+                let token = account.token as i64;
+                let receipt_chain_hash = account.receipt_chain_hash.0;
+                let voting_for = account.voting_for.0;
+
+                Some(Stake {
+                    balance,
+                    // TODO: update for Berkeley
+                    chain_id: "5f704c".to_string(),
+                    delegate,
+                    ledger_hash: staking_ledger.ledger_hash.clone().0,
+                    nonce,
+                    pk: Some(pk.clone().0),
+                    public_key: pk.0,
+                    receipt_chain_hash,
+                    token,
+                    epoch,
+                    voting_for,
+                })
+            })
+            .collect();
+
+        Ok(accounts)
     }
 
     pub(crate) async fn query_feetransfer(
@@ -364,10 +412,24 @@ impl DataSource {
 
     pub(crate) async fn stake_delegation_totals(
         &self,
-        _ctx: &Context<'_>,
-        _p1: &Stake,
+        ctx: &Context<'_>,
+        stake: &Stake,
     ) -> Result<DelegationTotal> {
-        todo!()
+        let AggregatedEpochStakeDelegations { delegations, .. } =
+            to_staking_account(stake, ctx).aggregate_delegations()?;
+
+        let pk = PublicKey(stake.public_key(ctx).await?);
+        let result = delegations.get(&pk).unwrap();
+        let total_delegated_nanomina = result.total_delegated.unwrap_or_default();
+        let count_delegates = result.count_delegates.unwrap_or_default() as i64;
+        let mut decimal = Decimal::from(total_delegated_nanomina);
+        decimal.set_scale(9).ok();
+        let total_delegated = decimal.to_f64().unwrap_or_default();
+
+        Ok(DelegationTotal {
+            count_delegates,
+            total_delegated,
+        })
     }
 
     pub(crate) async fn block_winner_account_balance(

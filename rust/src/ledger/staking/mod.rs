@@ -159,6 +159,79 @@ impl From<StakingAccountJson> for StakingAccount {
     }
 }
 
+impl StakingAccount {
+    /// Aggregate each public key's staking delegations and total delegations
+    /// If the public key has delegated, they cannot be delegated to
+    pub fn aggregate_delegations(&self) -> anyhow::Result<AggregatedEpochStakeDelegations> {
+        let mut delegations = HashMap::new();
+
+        let balance = self.balance;
+        let delegate = self.delegate.clone();
+
+        if self.pk != delegate {
+            delegations.insert(self.pk.clone(), None);
+        }
+
+        match delegations.insert(
+            delegate.clone(),
+            Some(EpochStakeDelegation {
+                pk: delegate.clone(),
+                total_delegated: Some(balance),
+                count_delegates: Some(1),
+            }),
+        ) {
+            None => (), // first delegation
+            Some(None) => {
+                // pk delegated to another pk
+                delegations.insert(delegate.clone(), None);
+            }
+            Some(Some(EpochStakeDelegation {
+                pk,
+                total_delegated,
+                count_delegates,
+            })) => {
+                // accumulate delegation
+                delegations.insert(
+                    delegate,
+                    Some(EpochStakeDelegation {
+                        pk,
+                        total_delegated: total_delegated.map(|acc| acc + balance),
+                        count_delegates: count_delegates.map(|acc| acc + 1),
+                    }),
+                );
+            }
+        }
+
+        let _total_delegations = delegations.values().fold(0, |acc, x| {
+            acc + x
+                .as_ref()
+                .map(|x| x.total_delegated.unwrap_or_default())
+                .unwrap_or_default()
+        });
+        delegations.iter_mut().for_each(|(pk, delegation)| {
+            if delegation.is_none() {
+                *delegation = Some(EpochStakeDelegation {
+                    pk: pk.clone(),
+                    count_delegates: None,
+                    total_delegated: None,
+                });
+            }
+        });
+        // let delegations = delegations
+        //     .into_iter()
+        //     .map(|(pk, del)| (pk, del.unwrap_or_default()))
+        //     .collect();
+        // Ok(AggregatedEpochStakeDelegations {
+        //     delegations,
+        //     total_delegations,
+        //     epoch: self.epoch,
+        //     network: self.network.clone(),
+        //     ledger_hash: self.ledger_hash.clone(),
+        // })
+        panic!("ahhh")
+    }
+}
+
 pub fn is_valid_ledger_file(path: &Path) -> bool {
     crate::block::is_valid_file_name(path, &super::is_valid_ledger_hash)
 }
@@ -199,74 +272,11 @@ impl StakingLedger {
     /// Aggregate each public key's staking delegations and total delegations
     /// If the public key has delegated, they cannot be delegated to
     pub fn aggregate_delegations(&self) -> anyhow::Result<AggregatedEpochStakeDelegations> {
-        let mut delegations = HashMap::new();
-        self.staking_ledger
-            .iter()
-            .for_each(|(pk, staking_account)| {
-                let balance = staking_account.balance;
-                let delegate = staking_account.delegate.clone();
-
-                if *pk != delegate {
-                    delegations.insert(pk.clone(), None);
-                }
-
-                match delegations.insert(
-                    delegate.clone(),
-                    Some(EpochStakeDelegation {
-                        pk: delegate.clone(),
-                        total_delegated: Some(balance),
-                        count_delegates: Some(1),
-                    }),
-                ) {
-                    None => (), // first delegation
-                    Some(None) => {
-                        // pk delegated to another pk
-                        delegations.insert(delegate.clone(), None);
-                    }
-                    Some(Some(EpochStakeDelegation {
-                        pk,
-                        total_delegated,
-                        count_delegates,
-                    })) => {
-                        // accumulate delegation
-                        delegations.insert(
-                            delegate,
-                            Some(EpochStakeDelegation {
-                                pk,
-                                total_delegated: total_delegated.map(|acc| acc + balance),
-                                count_delegates: count_delegates.map(|acc| acc + 1),
-                            }),
-                        );
-                    }
-                }
-            });
-
-        let total_delegations = delegations.values().fold(0, |acc, x| {
-            acc + x
-                .as_ref()
-                .map(|x| x.total_delegated.unwrap_or_default())
-                .unwrap_or_default()
-        });
-        delegations.iter_mut().for_each(|(pk, delegation)| {
-            if delegation.is_none() {
-                *delegation = Some(EpochStakeDelegation {
-                    pk: pk.clone(),
-                    count_delegates: None,
-                    total_delegated: None,
-                });
-            }
-        });
-        let delegations = delegations
-            .into_iter()
-            .map(|(pk, del)| (pk, del.unwrap_or_default()))
-            .collect();
-        Ok(AggregatedEpochStakeDelegations {
-            delegations,
-            total_delegations,
-            epoch: self.epoch,
-            network: self.network.clone(),
-            ledger_hash: self.ledger_hash.clone(),
-        })
+        // self.staking_ledger
+        //     .iter()
+        //     .for_each(|(pk, staking_account)|
+        // staking_account.aggregate_delegations())
+        panic!("ahhh")
     }
 
     pub fn summary(&self) -> String {

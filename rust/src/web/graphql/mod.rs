@@ -2,6 +2,7 @@ pub mod accounts;
 pub mod blocks;
 mod gen;
 mod query_implementations;
+mod stakes;
 mod transactions;
 
 use self::{
