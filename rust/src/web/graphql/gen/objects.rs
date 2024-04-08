@@ -566,6 +566,7 @@ impl BlockCreatorAccount {
 #[derive(Debug, Clone)]
 pub struct BlockProtocolStateConsensusStateStakingEpochDatum {
     pub epoch_length: Option<i64>,
+    pub ledger: Option<BlockProtocolStateConsensusStateStakingEpochDatumLedger>,
     pub lock_checkpoint: Option<String>,
     pub seed: Option<String>,
     pub start_checkpoint: Option<String>,
@@ -575,13 +576,8 @@ impl BlockProtocolStateConsensusStateStakingEpochDatum {
     pub async fn epoch_length(&self) -> Option<i64> {
         self.epoch_length
     }
-    pub async fn ledger(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Option<BlockProtocolStateConsensusStateStakingEpochDatumLedger>> {
-        ctx.data_unchecked::<DataSource>()
-            .block_protocol_state_consensus_state_staking_epoch_datum_ledger(ctx, self)
-            .await
+    pub async fn ledger(&self) -> Option<BlockProtocolStateConsensusStateStakingEpochDatumLedger> {
+        self.ledger.clone()
     }
     pub async fn lock_checkpoint(&self) -> Option<String> {
         self.lock_checkpoint.clone()
@@ -919,25 +915,17 @@ impl BlockWinnerAccountBalance {
 }
 #[derive(Debug, Clone)]
 pub struct BlockProtocolState {
+    pub blockchain_state: BlockProtocolStateBlockchainState,
+    pub consensus_state: BlockProtocolStateConsensusState,
     pub previous_state_hash: String,
 }
 #[Object]
 impl BlockProtocolState {
-    pub async fn blockchain_state(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<BlockProtocolStateBlockchainState> {
-        ctx.data_unchecked::<DataSource>()
-            .block_protocol_state_blockchain_state(ctx, self)
-            .await
+    pub async fn blockchain_state(&self) -> BlockProtocolStateBlockchainState {
+        self.blockchain_state.clone()
     }
-    pub async fn consensus_state(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<BlockProtocolStateConsensusState> {
-        ctx.data_unchecked::<DataSource>()
-            .block_protocol_state_consensus_state(ctx, self)
-            .await
+    pub async fn consensus_state(&self) -> BlockProtocolStateConsensusState {
+        self.consensus_state.clone()
     }
     pub async fn previous_state_hash(&self) -> String {
         self.previous_state_hash.clone()
@@ -946,6 +934,7 @@ impl BlockProtocolState {
 #[derive(Debug, Clone)]
 pub struct BlockProtocolStateConsensusStateNextEpochDatum {
     pub epoch_length: Option<i64>,
+    pub ledger: Option<BlockProtocolStateConsensusStateNextEpochDatumLedger>,
     pub lock_checkpoint: Option<String>,
     pub seed: Option<String>,
     pub start_checkpoint: Option<String>,
@@ -955,13 +944,8 @@ impl BlockProtocolStateConsensusStateNextEpochDatum {
     pub async fn epoch_length(&self) -> Option<i64> {
         self.epoch_length
     }
-    pub async fn ledger(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Option<BlockProtocolStateConsensusStateNextEpochDatumLedger>> {
-        ctx.data_unchecked::<DataSource>()
-            .block_protocol_state_consensus_state_next_epoch_datum_ledger(ctx, self)
-            .await
+    pub async fn ledger(&self) -> Option<BlockProtocolStateConsensusStateNextEpochDatumLedger> {
+        self.ledger.clone()
     }
     pub async fn lock_checkpoint(&self) -> Option<String> {
         self.lock_checkpoint.clone()
@@ -992,8 +976,10 @@ pub struct BlockProtocolStateConsensusState {
     pub has_ancestor_in_same_checkpoint_window: Option<bool>,
     pub last_vrf_output: Option<String>,
     pub min_window_density: Option<i64>,
+    pub next_epoch_data: Option<BlockProtocolStateConsensusStateNextEpochDatum>,
     pub slot: i64,
     pub slot_since_genesis: i64,
+    pub staking_epoch_data: Option<BlockProtocolStateConsensusStateStakingEpochDatum>,
     pub total_currency: f64,
 }
 #[Object]
@@ -1019,13 +1005,8 @@ impl BlockProtocolStateConsensusState {
     pub async fn min_window_density(&self) -> Option<i64> {
         self.min_window_density
     }
-    pub async fn next_epoch_data(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Option<BlockProtocolStateConsensusStateNextEpochDatum>> {
-        ctx.data_unchecked::<DataSource>()
-            .block_protocol_state_consensus_state_next_epoch_data(ctx, self)
-            .await
+    pub async fn next_epoch_data(&self) -> Option<BlockProtocolStateConsensusStateNextEpochDatum> {
+        self.next_epoch_data.clone()
     }
     pub async fn slot(&self) -> i64 {
         self.slot
@@ -1035,11 +1016,8 @@ impl BlockProtocolStateConsensusState {
     }
     pub async fn staking_epoch_data(
         &self,
-        ctx: &Context<'_>,
-    ) -> Result<Option<BlockProtocolStateConsensusStateStakingEpochDatum>> {
-        ctx.data_unchecked::<DataSource>()
-            .block_protocol_state_consensus_state_staking_epoch_data(ctx, self)
-            .await
+    ) -> Option<BlockProtocolStateConsensusStateStakingEpochDatum> {
+        self.staking_epoch_data.clone()
     }
     pub async fn total_currency(&self) -> f64 {
         self.total_currency
@@ -1097,11 +1075,15 @@ pub struct Block {
     pub canonical: bool,
     pub creator: Option<String>,
     pub date_time: DateTime,
+    pub protocol_state: BlockProtocolState,
     pub received_time: Option<DateTime>,
     pub snark_fees: String,
+    pub snark_jobs: Vec<Option<BlockSnarkJob>>,
     pub state_hash: String,
     pub state_hash_field: Option<String>,
+    pub transactions: BlockTransaction,
     pub tx_fees: String,
+    pub winner_account: BlockWinnerAccount,
 }
 #[Object]
 impl Block {
@@ -1122,10 +1104,8 @@ impl Block {
     pub async fn date_time(&self) -> DateTime {
         self.date_time.clone()
     }
-    pub async fn protocol_state(&self, ctx: &Context<'_>) -> Result<BlockProtocolState> {
-        ctx.data_unchecked::<DataSource>()
-            .block_protocol_state(ctx, self)
-            .await
+    pub async fn protocol_state(&self) -> BlockProtocolState {
+        self.protocol_state.clone()
     }
     pub async fn received_time(&self) -> Option<DateTime> {
         self.received_time.clone()
@@ -1133,10 +1113,8 @@ impl Block {
     pub async fn snark_fees(&self) -> String {
         self.snark_fees.clone()
     }
-    pub async fn snark_jobs(&self, ctx: &Context<'_>) -> Result<Vec<Option<BlockSnarkJob>>> {
-        ctx.data_unchecked::<DataSource>()
-            .block_snark_jobs(ctx, self)
-            .await
+    pub async fn snark_jobs(&self) -> Vec<Option<BlockSnarkJob>> {
+        self.snark_jobs.clone()
     }
     pub async fn state_hash(&self) -> String {
         self.state_hash.clone()
@@ -1144,18 +1122,14 @@ impl Block {
     pub async fn state_hash_field(&self) -> Option<String> {
         self.state_hash_field.clone()
     }
-    pub async fn transactions(&self, ctx: &Context<'_>) -> Result<BlockTransaction> {
-        ctx.data_unchecked::<DataSource>()
-            .block_transactions(ctx, self)
-            .await
+    pub async fn transactions(&self) -> BlockTransaction {
+        self.transactions.clone()
     }
     pub async fn tx_fees(&self) -> String {
         self.tx_fees.clone()
     }
-    pub async fn winner_account(&self, ctx: &Context<'_>) -> Result<BlockWinnerAccount> {
-        ctx.data_unchecked::<DataSource>()
-            .block_winner_account(ctx, self)
-            .await
+    pub async fn winner_account(&self) -> BlockWinnerAccount {
+        self.winner_account.clone()
     }
 }
 #[derive(Debug, Clone)]

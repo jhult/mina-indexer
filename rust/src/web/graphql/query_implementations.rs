@@ -1,8 +1,9 @@
-use super::{db, gen::*, stakes::to_staking_account, transactions::TX_COLUMN};
+use super::{db, gen::*, stakes::to_staking_account};
 use crate::{
     block::{store::BlockStore, BlockHash},
     canonicity::{store::CanonicityStore, Canonicity},
-    ledger::{public_key::PublicKey, staking::AggregatedEpochStakeDelegations},
+    ledger::{public_key::PublicKey, staking::AggregatedEpochStakeDelegations, store::*},
+    web::graphql::transactions::TX_COLUMN,
 };
 use async_graphql::{Context, Result};
 use rust_decimal::{prelude::ToPrimitive, Decimal};
@@ -115,22 +116,6 @@ impl DataSource {
         Ok(Some(block))
     }
 
-    pub(crate) async fn block_transactions(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Block,
-    ) -> Result<BlockTransaction> {
-        todo!()
-    }
-
-    pub(crate) async fn block_winner_account(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Block,
-    ) -> Result<BlockWinnerAccount> {
-        todo!()
-    }
-
     pub(crate) async fn nextstake_next_delegation_totals(
         &self,
         _ctx: &Context<'_>,
@@ -147,68 +132,14 @@ impl DataSource {
         todo!()
     }
 
-    pub(crate) async fn block_snark_jobs(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Block,
-    ) -> Result<Vec<Option<BlockSnarkJob>>> {
-        todo!()
-    }
-
-    pub(crate) async fn block_protocol_state(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &Block,
-    ) -> Result<BlockProtocolState> {
-        todo!()
-    }
-
     pub(crate) async fn block_creator_account(
         &self,
         _ctx: &Context<'_>,
-        _p1: &Block,
+        block: &Block,
     ) -> Result<BlockCreatorAccount> {
-        todo!()
-    }
-
-    pub(crate) async fn block_protocol_state_consensus_state_staking_epoch_data(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &BlockProtocolStateConsensusState,
-    ) -> Result<Option<BlockProtocolStateConsensusStateStakingEpochDatum>> {
-        todo!()
-    }
-
-    pub(crate) async fn block_protocol_state_consensus_state_next_epoch_data(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &BlockProtocolStateConsensusState,
-    ) -> Result<Option<BlockProtocolStateConsensusStateNextEpochDatum>> {
-        todo!()
-    }
-
-    pub(crate) async fn block_protocol_state_consensus_state_next_epoch_datum_ledger(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &BlockProtocolStateConsensusStateNextEpochDatum,
-    ) -> Result<Option<BlockProtocolStateConsensusStateNextEpochDatumLedger>> {
-        todo!()
-    }
-
-    pub(crate) async fn block_protocol_state_consensus_state(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &BlockProtocolState,
-    ) -> Result<BlockProtocolStateConsensusState> {
-        todo!()
-    }
-
-    pub(crate) async fn block_protocol_state_blockchain_state(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &BlockProtocolState,
-    ) -> Result<BlockProtocolStateBlockchainState> {
-        todo!()
+        Ok(BlockCreatorAccount {
+            public_key: block.creator.to_owned().unwrap(),
+        })
     }
 
     pub(crate) async fn feetransfer_block_state_hash(
@@ -366,14 +297,6 @@ impl DataSource {
         todo!()
     }
 
-    pub(crate) async fn block_protocol_state_consensus_state_staking_epoch_datum_ledger(
-        &self,
-        _ctx: &Context<'_>,
-        _p1: &BlockProtocolStateConsensusStateStakingEpochDatum,
-    ) -> Result<Option<BlockProtocolStateConsensusStateStakingEpochDatumLedger>> {
-        todo!()
-    }
-
     pub(crate) async fn snark_block(&self, _ctx: &Context<'_>, _p1: &Snark) -> Result<Block> {
         todo!()
     }
@@ -435,7 +358,7 @@ impl DataSource {
     pub(crate) async fn block_winner_account_balance(
         &self,
         _ctx: &Context<'_>,
-        _p1: &BlockWinnerAccount,
+        _account: &BlockWinnerAccount,
     ) -> Result<BlockWinnerAccountBalance> {
         todo!()
     }

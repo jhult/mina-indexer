@@ -23,3 +23,53 @@ resolver_type = "field"
 target_type = "Transaction"
 target_field = "receiver"
 resolver_type = "field"
+
+[[resolver]]
+target_type = "Block"
+target_field = "protocolState"
+resolver_type = "field"
+
+[[resolver]]
+target_type = "BlockProtocolState"
+target_field = "blockchainState"
+resolver_type = "field"
+
+[[resolver]]
+target_type = "BlockProtocolState"
+target_field = "consensusState"
+resolver_type = "field"
+
+[[resolver]]
+target_type = "BlockProtocolStateConsensusState"
+target_field = "stakingEpochData"
+resolver_type = "field"
+
+[[resolver]]
+target_type = "BlockProtocolStateConsensusState"
+target_field = "nextEpochData"
+resolver_type = "field"
+
+[[resolver]]
+target_type = "BlockProtocolStateConsensusStateStakingEpochDatum"
+target_field = "ledger"
+resolver_type = "field"
+
+[[resolver]]
+target_type = "BlockProtocolStateConsensusStateNextEpochDatum"
+target_field = "ledger"
+resolver_type = "field"
+
+[[resolver]]
+target_type = "Block"
+target_field = "snarkJobs"
+resolver_type = "field"
+
+[[resolver]]
+target_type = "Block"
+target_field = "transactions"
+resolver_type = "field"
+
+[[resolver]]
+target_type = "Block"
+target_field = "winnerAccount"
+resolver_type = "field"

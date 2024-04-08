@@ -1,4 +1,10 @@
-use super::gen::Block;
+use super::gen::{
+    Block, BlockProtocolState, BlockProtocolStateBlockchainState, BlockProtocolStateConsensusState,
+    BlockProtocolStateConsensusStateNextEpochDatum,
+    BlockProtocolStateConsensusStateNextEpochDatumLedger,
+    BlockProtocolStateConsensusStateStakingEpochDatum,
+    BlockProtocolStateConsensusStateStakingEpochDatumLedger, DateTime,
+};
 use crate::{
     block::precomputed::PrecomputedBlock,
     ledger::LedgerHash,
@@ -145,60 +151,61 @@ impl From<PrecomputedBlock> for Block {
             .t;
 
         Block {
-            state_hash: block.state_hash,
-            block_height: block.blockchain_length,
-            date_time,
-            winner_account: WinnerAccount {
-                public_key: winner_account,
-            },
-            creator_account: CreatorAccount {
-                public_key: creator.clone(),
-            },
-            creator,
-            received_time,
-            protocol_state: ProtocolState {
+            block_height: block.blockchain_length as i64,
+            canonical: todo!(),
+            creator: Some(creator),
+            date_time: DateTime(date_time),
+            protocol_state: BlockProtocolState {
                 previous_state_hash,
-                blockchain_state: BlockchainState {
-                    date: utc_date.clone(),
-                    utc_date,
+                blockchain_state: BlockProtocolStateBlockchainState {
+                    date: Some(utc_date.clone() as i64),
+                    utc_date: Some(utc_date),
                     snarked_ledger_hash,
                     staged_ledger_hash,
                 },
-                consensus_state: ConsensusState {
-                    total_currency,
-                    blockchain_length,
-                    block_height,
-                    epoch,
-                    epoch_count,
-                    has_ancestor_in_same_checkpoint_window,
-                    last_vrf_output,
-                    min_window_density,
-                    slot,
-                    slot_since_genesis,
-                    next_epoch_data: NextEpochData {
-                        seed,
-                        epoch_length,
-                        start_checkpoint,
-                        lock_checkpoint,
-                        ledger: NextEpochDataLedger {
-                            hash: ledger_hash,
-                            total_currency: ledger_total_currency,
-                        },
-                    },
-                    staking_epoch_data: StakingEpochData {
-                        seed: staking_seed,
-                        epoch_length: staking_epoch_length,
-                        start_checkpoint: staking_start_checkpoint,
-                        lock_checkpoint: staking_lock_checkpoint,
-                        ledger: StakingEpochDataLedger {
-                            hash: staking_ledger_hash,
-                            total_currency: staking_ledger_total_currency,
-                        },
-                    },
+                consensus_state: BlockProtocolStateConsensusState {
+                    total_currency: total_currency as f64,
+                    blockchain_length: Some(blockchain_length as i64),
+                    block_height: Some(block_height as i64),
+                    epoch: epoch as i64,
+                    epoch_count: Some(epoch_count as i64),
+                    has_ancestor_in_same_checkpoint_window: Some(
+                        has_ancestor_in_same_checkpoint_window,
+                    ),
+                    last_vrf_output: Some(last_vrf_output),
+                    min_window_density: Some(min_window_density as i64),
+                    slot: slot as i64,
+                    slot_since_genesis: slot_since_genesis as i64,
+                    next_epoch_data: Some(BlockProtocolStateConsensusStateNextEpochDatum {
+                        seed: Some(seed),
+                        epoch_length: Some(epoch_length as i64),
+                        start_checkpoint: Some(start_checkpoint),
+                        lock_checkpoint: Some(lock_checkpoint),
+                        ledger: Some(BlockProtocolStateConsensusStateNextEpochDatumLedger {
+                            hash: Some(ledger_hash),
+                            total_currency: Some(ledger_total_currency as f64),
+                        }),
+                    }),
+                    staking_epoch_data: Some(BlockProtocolStateConsensusStateStakingEpochDatum {
+                        seed: Some(staking_seed),
+                        epoch_length: Some(staking_epoch_length as i64),
+                        start_checkpoint: Some(staking_start_checkpoint),
+                        lock_checkpoint: Some(staking_lock_checkpoint),
+                        ledger: Some(BlockProtocolStateConsensusStateStakingEpochDatumLedger {
+                            hash: Some(staking_ledger_hash),
+                            total_currency: Some(staking_ledger_total_currency as f64),
+                        }),
+                    }),
                 },
             },
-            tx_fees: tx_fees.to_string(),
+            received_time: Some(DateTime(received_time)),
             snark_fees: snark_fees.to_string(),
+            snark_jobs: todo!(),
+            state_hash: block.state_hash,
+            state_hash_field: todo!(),
+            transactions: todo!(),
+            tx_fees: tx_fees.to_string(),
+            winner_account: todo!(),
         }
     }
 }
