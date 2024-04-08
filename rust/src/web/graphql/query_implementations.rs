@@ -1,13 +1,15 @@
-use super::{db, gen::*, stakes::to_staking_account};
+use super::{date_time_to_scalar, db, gen::*, stakes::to_staking_account};
 use crate::{
     block::{store::BlockStore, BlockHash},
     canonicity::{store::CanonicityStore, Canonicity},
     ledger::{public_key::PublicKey, staking::AggregatedEpochStakeDelegations, store::*},
-    web::graphql::transactions::TX_COLUMN,
+    store::{
+        user_commands_iterator, user_commands_iterator_signed_command,
+        user_commands_iterator_txn_hash,
+    },
 };
 use async_graphql::{Context, Result};
 use rust_decimal::{prelude::ToPrimitive, Decimal};
-use speedb::{Direction, IteratorMode};
 
 pub struct DataSource;
 
@@ -156,7 +158,7 @@ impl DataSource {
         _: &Query,
         input: TransactionQueryInput,
         limit: Option<i64>,
-        sort_by: TransactionSortByInput,
+        _sort_by: TransactionSortByInput,
     ) -> Result<Vec<Option<Transaction>>> {
         let db = db(ctx);
         let limit = limit.unwrap_or(100);
@@ -164,68 +166,43 @@ impl DataSource {
 
         let mut transactions: Vec<Option<Transaction>> = Vec::new();
 
-        let iter = if let Some(date_time_gte) = input.date_time_gte {
-            // TODO: what incoming format and timezone? UTC?
-            let bytes = chrono::DateTime::parse_from_rfc2822(&date_time_gte.0)
-                .unwrap()
-                .timestamp_millis()
-                .to_string()
-                .into_bytes();
-            //let key = Base32Hex.encode(&bytes);
-
-            let mode = IteratorMode::From(&key.into_bytes(), Direction::Forward);
-            let mut iter = db.database.iterator_cf(TX_COLUMN.as_ref(), mode);
-            iter.set_mode(mode);
-            iter
-        } else {
-            db.database
-                .iterator_cf(TX_COLUMN.as_ref(), IteratorMode::Start)
-        };
+        let iter = user_commands_iterator(db);
 
         for entry in iter {
-            let (key, value) = entry.unwrap();
+            let txn_hash = user_commands_iterator_txn_hash(&entry)?;
 
-            // TODO: fix
-            //let key = Transaction {}; //
-            // TransactionKey::from_slice(&key).unwrap();
-
-            //let cmd = UserCommandWithStatusV1::new();
-            // let cmd = bcs::from_bytes::<UserCommandWithStatusV1>(&value)
-            //     .unwrap()
-            //     .inner();
-
-            // let transaction = Transaction::from_cmd(
-            //     UserCommandWithStatusJson::from(cmd),
-            //     key.height() as i32,
-            //     key.timestamp(),
-            //     key.hash(),
-            // );
-
-            // // If query is provided, only add transactions that satisfy the
-            // query if let Some(ref query_input) = query {
-            //     if query_input.matches(&transaction) {
-            //         transactions.push(Some(transaction));
-            //     }
-            // }
-            // // If no query is provided, add all transactions
-            // else {
-            //     transactions.push(Some(transaction));
-            // }
-            // // Early break if the transactions reach the query limit
-            // if transactions.len() >= limit_idx {
-            //     break;
-            // }
-        }
-
-        match sort_by {
-            TransactionSortByInput::NonceAsc => {
-                transactions.sort_by(|Some(a), Some(b)| a.nonce.cmp(&b.nonce))
+            if let Some(__) = input.hash.to_owned() {
+                if txn_hash != __ {
+                    continue;
+                }
             }
-            _ => transactions.sort_by(|Some(a), Some(b)| b.nonce.cmp(&a.nonce)),
+
+            let cmd = user_commands_iterator_signed_command(&entry)?;
+
+            let block_state_hash = cmd.state_hash.to_owned();
+            let block_date_time = date_time_to_scalar(cmd.date_time as i64);
+
+            let transaction = Transaction::from_cmd(cmd, block_date_time, &block_state_hash);
+
+            // Only add transactions that satisfy the query
+            if input.matches(&transaction) {
+                transactions.push(Some(transaction));
+            };
+
+            // Early break if the transactions reach the query limit
+            if transactions.len() >= limit_idx {
+                break;
+            }
         }
 
-        //Ok(Some(transactions))
-        panic!();
+        // match sort_by {
+        //     TransactionSortByInput::NonceAsc => {
+        //         transactions.sort_by(|Some(a), Some(b)| a.nonce.cmp(&b.nonce))
+        //     }
+        //     _ => transactions.sort_by(|Some(a), Some(b)| b.nonce.cmp(&a.nonce)),
+        // }
+
+        Ok(transactions)
     }
 
     pub(crate) async fn query_transaction(

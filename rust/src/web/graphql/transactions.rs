@@ -1,51 +1,51 @@
-use super::{
-    date_time_to_scalar,
-    gen::{Transaction, TransactionQueryInput},
-    sanitize_json,
+use super::gen::{
+    DateTime, Transaction, TransactionBlock, TransactionQueryInput, TransactionReceiver,
 };
-use crate::protocol::serialization_types::staged_ledger_diff::{
-    SignedCommandPayloadBodyJson, StakeDelegationJson, UserCommandJson, UserCommandWithStatusJson,
+use crate::{
+    block::BlockHash,
+    command::signed::{SignedCommand, SignedCommandWithData},
+    ledger::public_key::PublicKey,
+    protocol::serialization_types::staged_ledger_diff::{
+        SignedCommandPayloadBody, StakeDelegation,
+    },
 };
-use chrono::Utc;
-
-pub(crate) const TX_COLUMN: &str = "tx";
 
 impl TransactionQueryInput {
     pub fn matches(&self, transaction: &Transaction) -> bool {
         let mut matches = true;
 
-        if let Some(ref hash) = self.hash {
-            matches = matches && transaction.hash == Some(*hash);
+        if let Some(hash) = &self.hash {
+            matches = matches && &transaction.hash == hash;
         }
-        if let Some(ref fee) = self.fee {
-            matches = matches && transaction.fee == Some(*fee);
+        if let Some(fee) = self.fee {
+            matches = matches && transaction.fee == fee;
         }
 
-        if let Some(ref kind) = self.kind {
-            matches = matches && transaction.kind == Some(*kind);
+        if self.kind.is_some() {
+            matches = matches && transaction.kind == self.kind;
         }
 
         if let Some(canonical) = self.canonical {
-            matches = matches && transaction.canonical == Some(canonical);
+            matches = matches && transaction.canonical == canonical;
         }
 
-        if let Some(ref from) = self.from {
-            matches = matches && transaction.from == Some(*from);
+        if self.from.is_some() {
+            matches = matches && transaction.from == self.from;
         }
 
-        if let Some(ref to) = self.to {
-            matches = matches && transaction.to == Some(*to);
+        if let Some(to) = &self.to {
+            matches = matches && &transaction.to == to;
         }
 
-        if let Some(ref memo) = self.memo {
-            matches = matches && transaction.memo == Some(*memo);
+        if let Some(memo) = &self.memo {
+            matches = matches && &transaction.memo == memo;
         }
 
-        if let Some(ref query) = self.and {
+        if let Some(query) = &self.and {
             matches = matches && query.iter().all(|and| and.matches(transaction));
         }
 
-        if let Some(ref query) = self.or {
+        if let Some(query) = &self.or {
             if !query.is_empty() {
                 matches = matches && query.iter().any(|or| or.matches(transaction));
             }
@@ -59,61 +59,74 @@ impl TransactionQueryInput {
             matches = matches && transaction.block.date_time <= *__;
         }
 
+        // TODO: implement matches for all the other optional vars
+
         matches
     }
 }
 
 impl Transaction {
     pub fn from_cmd(
-        cmd: UserCommandWithStatusJson,
-        height: i32,
-        timestamp: u64,
-        hash: &str,
+        cmd: SignedCommandWithData,
+        block_date_time: DateTime,
+        block_state_hash: &BlockHash,
     ) -> Self {
-        match cmd.data {
-            UserCommandJson::SignedCommand(signed_cmd) => {
-                let payload = signed_cmd.payload;
-                let token = payload.common.fee_token.0;
-                let nonce = payload.common.nonce.0;
-                let fee = payload.common.fee.0;
+        match cmd.command {
+            SignedCommand(signed_cmd) => {
+                let payload = signed_cmd.t.t.payload;
+                let token = payload.t.t.common.t.t.t.fee_token.t.t.t;
+                let nonce = payload.t.t.common.t.t.t.nonce.t.t;
+                let fee = payload.t.t.common.t.t.t.fee.t.t;
                 let (sender, receiver, kind, token_id, amount) = {
-                    match payload.body {
-                        SignedCommandPayloadBodyJson::PaymentPayload(payload) => (
-                            payload.source_pk,
-                            payload.receiver_pk,
+                    match payload.t.t.body.t.t {
+                        SignedCommandPayloadBody::PaymentPayload(payload) => (
+                            payload.t.t.source_pk,
+                            payload.t.t.receiver_pk,
                             "PAYMENT",
                             token,
-                            payload.amount.0,
+                            payload.t.t.amount.t.t,
                         ),
-                        SignedCommandPayloadBodyJson::StakeDelegation(payload) => {
-                            let StakeDelegationJson::SetDelegate {
+                        SignedCommandPayloadBody::StakeDelegation(payload) => {
+                            let StakeDelegation::SetDelegate {
                                 delegator,
                                 new_delegate,
-                            } = payload;
+                            } = payload.t;
                             (delegator, new_delegate, "STAKE_DELEGATION", token, 0)
                         }
                     }
                 };
 
-                let datetime = date_time_to_scalar(timestamp as i64);
+                let receiver = PublicKey::from(receiver).0;
+                let mut memo = String::from_utf8(payload.t.t.common.t.t.t.memo.t.0).unwrap();
+                // ignore memos with nonsense unicode
+                if memo.starts_with("\u{0001}") {
+                    memo = String::new();
+                };
 
                 Self {
-                    hash: Some(hash.to_string()),
-                    from: Some(sanitize_json(sender)),
-                    to: Some(sanitize_json(receiver)),
-                    memo: Some(sanitize_json(payload.common.memo)),
-                    block_height: Some(height),
-                    date_time: Some(datetime),
-                    canonical: Some(true),
-                    kind: Some(&kind),
-                    token: Some(token_id),
-                    nonce: Some(nonce),
-                    fee: Some(fee as f64 / 1_000_000_000_f64),
-                    amount: Some(amount as f64 / 1_000_000_000_f64),
-                    failure_reason: todo!(),
-                    fee_token: todo!(),
-                    id: todo!(),
-                    is_delegation: todo!(),
+                    hash: cmd.tx_hash,
+                    from: Some(PublicKey::from(sender).0),
+                    to: receiver.to_owned(),
+                    receiver: TransactionReceiver {
+                        public_key: receiver,
+                    },
+                    memo,
+                    block_height: cmd.blockchain_length as i64,
+                    block: TransactionBlock {
+                        date_time: block_date_time,
+                        state_hash: block_state_hash.0.to_owned(),
+                    },
+                    // TODO: always true ??
+                    canonical: true,
+                    kind: Some(kind.to_string()),
+                    token: Some(token_id as i64),
+                    nonce: nonce as i64,
+                    fee: fee as f64 / 1_000_000_000_f64,
+                    amount: amount as f64 / 1_000_000_000_f64,
+                    // TODO: Why is this required?
+                    failure_reason: String::new(),
+                    // TODO: What is this?
+                    id: String::from("Not yet implemented"),
                 }
             }
         }
