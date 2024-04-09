@@ -1,36 +1,37 @@
+use super::{
+    db,
+    gen::{
+        Block, BlockCreatorAccount, BlockProtocolState, BlockProtocolStateBlockchainState,
+        BlockProtocolStateConsensusState, BlockProtocolStateConsensusStateNextEpochDatum,
+        BlockProtocolStateConsensusStateNextEpochDatumLedger,
+        BlockProtocolStateConsensusStateStakingEpochDatum,
+        BlockProtocolStateConsensusStateStakingEpochDatumLedger, BlockQueryInput, BlockSortByInput,
+        BlockTransaction, BlockTransactionCoinbaseReceiverAccount, BlockWinnerAccount,
+        BlockWinnerAccountBalance, DateTime, Long, Query,
+    },
+    DataSource,
+};
 use crate::{
     block::{precomputed::PrecomputedBlock, store::BlockStore, BlockHash},
     canonicity::{store::CanonicityStore, Canonicity},
     ledger::LedgerHash,
     proof_systems::signer::pubkey::CompressedPubKey,
     protocol::serialization_types::{common::Base58EncodableVersionedType, version_bytes},
-    store::IndexerStore,
+    web::graphql::millis_to_rfc_date_string,
 };
-use async_graphql::{Context, InputObject, Object, Result, SimpleObject};
-use chrono::{DateTime, SecondsFormat};
-use std::sync::Arc;
+use async_graphql::{Context, Result};
 
-#[derive(InputObject)]
-pub struct BlockQueryInput {
-    state_hash: String,
-}
-
-#[derive(Default)]
-pub struct BlocksQueryRoot;
-
-#[Object]
-impl BlocksQueryRoot {
-    async fn block<'ctx>(
+impl DataSource {
+    pub async fn query_block(
         &self,
-        ctx: &Context<'ctx>,
-        query: Option<BlockQueryInput>,
-    ) -> Result<Option<BlockWithCanonicity>> {
-        let db = ctx
-            .data::<Arc<IndexerStore>>()
-            .expect("db to be in context");
-        // Choose geneesis block if query is None
-        let state_hash = match query {
-            Some(query) => BlockHash::from(query.state_hash),
+        ctx: &Context<'_>,
+        _: &Query,
+        input: BlockQueryInput,
+    ) -> Result<Option<Block>> {
+        let db = db(ctx);
+        // Choose genesis block if query is None
+        let state_hash = match input.state_hash {
+            Some(state_hash) => BlockHash::from(state_hash),
             None => match db.get_canonical_hash_at_height(1)? {
                 Some(state_hash) => state_hash,
                 None => return Ok(None),
@@ -40,168 +41,35 @@ impl BlocksQueryRoot {
             Some(pcb) => pcb,
             None => return Ok(None),
         };
-        let block = Block::from(pcb);
         let canonical = db
             .get_block_canonicity(&state_hash)?
             .map(|status| matches!(status, Canonicity::Canonical))
             .unwrap_or(false);
-        Ok(Some(BlockWithCanonicity { block, canonical }))
+        let block = Block::from(pcb, canonical);
+
+        Ok(Some(block))
+    }
+
+    pub async fn query_blocks(
+        &self,
+        _ctx: &Context<'_>,
+        _: &Query,
+        _limit: Option<i64>,
+        _sort_by: BlockSortByInput,
+        _input: BlockQueryInput,
+    ) -> Result<Vec<Option<Block>>> {
+        todo!()
     }
 }
 
-#[derive(SimpleObject)]
-pub struct BlockWithCanonicity {
-    /// Value canonical
-    canonical: bool,
-    /// Value block
-    #[graphql(flatten)]
-    block: Block,
-}
-
-#[derive(SimpleObject)]
-struct Block {
-    /// Value state_hash
-    state_hash: String,
-    /// Value block_height
-    block_height: u32,
-    /// Value winning_account
-    winner_account: WinnerAccount,
-    /// Value date_time as ISO 8601 string
-    date_time: String,
-    /// Value received_time as ISO 8601 string
-    received_time: String,
-    /// Value creator account
-    creator_account: CreatorAccount,
-    /// Value creator public key
-    creator: String,
-    /// Value protocol state
-    protocol_state: ProtocolState,
-    /// Value transaction fees
-    tx_fees: String,
-    /// Value SNARK fees
-    snark_fees: String,
-}
-
-#[derive(SimpleObject)]
-struct ConsensusState {
-    /// Value total currency
-    total_currency: u64,
-    /// Value block height
-    blockchain_length: u32,
-    /// Value block height
-    block_height: u32,
-    /// Value epoch count
-    epoch_count: u32,
-    /// Value epoch count
-    epoch: u32,
-    /// Value has ancestors the same checkpoint window
-    has_ancestor_in_same_checkpoint_window: bool,
-    /// Value last VRF output
-    last_vrf_output: String,
-    /// Value minimum window density
-    min_window_density: u32,
-    /// Value current slot
-    slot: u32,
-    /// Value global slot
-    slot_since_genesis: u32,
-    /// Value next epoch data
-    next_epoch_data: NextEpochData,
-    /// Value next epoch data
-    staking_epoch_data: StakingEpochData,
-}
-
-#[derive(SimpleObject)]
-struct StakingEpochData {
-    /// Value seed
-    seed: String,
-    /// Value epoch length
-    epoch_length: u32,
-    /// Value start checkpoint
-    start_checkpoint: String,
-    /// Value lock checkpoint
-    lock_checkpoint: String,
-    /// Value staking ledger
-    ledger: StakingEpochDataLedger,
-}
-
-#[derive(SimpleObject)]
-struct NextEpochData {
-    /// Value seed
-    seed: String,
-    /// Value epoch length
-    epoch_length: u32,
-    /// Value start checkpoint
-    start_checkpoint: String,
-    /// Value lock checkpoint
-    lock_checkpoint: String,
-    /// Value next ledger
-    ledger: NextEpochDataLedger,
-}
-
-#[derive(SimpleObject)]
-struct NextEpochDataLedger {
-    /// Value hash
-    hash: String,
-    /// Value total currency
-    total_currency: u64,
-}
-
-#[derive(SimpleObject)]
-struct StakingEpochDataLedger {
-    /// Value hash
-    hash: String,
-    /// Value total currency
-    total_currency: u64,
-}
-
-#[derive(SimpleObject)]
-struct BlockchainState {
-    /// Value utc_date as numeric string
-    utc_date: String,
-    /// Value date as numeric string
-    date: String,
-    /// Value snarked ledger hash
-    snarked_ledger_hash: String,
-    /// Value staged ledger hash
-    staged_ledger_hash: String,
-}
-
-#[derive(SimpleObject)]
-struct ProtocolState {
-    /// Value parent state hash
-    previous_state_hash: String,
-    /// Value blockchain state
-    blockchain_state: BlockchainState,
-    /// Value consensus state
-    consensus_state: ConsensusState,
-}
-
-#[derive(SimpleObject)]
-struct WinnerAccount {
-    /// The public_key for the WinnerAccount
-    public_key: String,
-}
-
-#[derive(SimpleObject)]
-struct CreatorAccount {
-    /// The public_key for the WinnerAccount
-    public_key: String,
-}
-
-/// convert epoch millis to an ISO 8601 formatted date
-fn millis_to_date_string(millis: i64) -> String {
-    let date_time = DateTime::from_timestamp_millis(millis).unwrap();
-    date_time.to_rfc3339_opts(SecondsFormat::Millis, true)
-}
-
-impl From<PrecomputedBlock> for Block {
-    fn from(block: PrecomputedBlock) -> Self {
-        let winner_account = block.block_creator().0;
-        let date_time = millis_to_date_string(block.timestamp().try_into().unwrap());
+impl Block {
+    pub fn from(block: PrecomputedBlock, canonical: bool) -> Self {
+        let winner_account = block.block_creator();
+        let date_time = millis_to_rfc_date_string(block.timestamp().try_into().unwrap());
         let pk_creator = block.consensus_state().block_creator;
         let creator = CompressedPubKey::from(&pk_creator).into_address();
         let scheduled_time = block.scheduled_time.clone();
-        let received_time = millis_to_date_string(scheduled_time.parse::<i64>().unwrap());
+        let received_time = millis_to_rfc_date_string(scheduled_time.parse::<i64>().unwrap());
         let previous_state_hash = block.previous_state_hash().0;
         let tx_fees = block.tx_fees();
         let snark_fees = block.snark_fees();
@@ -332,60 +200,84 @@ impl From<PrecomputedBlock> for Block {
             .t;
 
         Block {
-            state_hash: block.state_hash,
-            block_height: block.blockchain_length,
-            date_time,
-            winner_account: WinnerAccount {
-                public_key: winner_account,
+            block_height: block.blockchain_length as i64,
+            canonical,
+            creator: Some(creator.clone()),
+            creator_account: BlockCreatorAccount {
+                public_key: creator,
             },
-            creator_account: CreatorAccount {
-                public_key: creator.clone(),
-            },
-            creator,
-            received_time,
-            protocol_state: ProtocolState {
+            date_time: DateTime(date_time),
+            protocol_state: BlockProtocolState {
                 previous_state_hash,
-                blockchain_state: BlockchainState {
-                    date: utc_date.clone(),
-                    utc_date,
+                blockchain_state: BlockProtocolStateBlockchainState {
+                    date: Some(Long(utc_date.clone())),
+                    utc_date: Some(Long(utc_date)),
                     snarked_ledger_hash,
                     staged_ledger_hash,
                 },
-                consensus_state: ConsensusState {
-                    total_currency,
-                    blockchain_length,
-                    block_height,
-                    epoch,
-                    epoch_count,
-                    has_ancestor_in_same_checkpoint_window,
-                    last_vrf_output,
-                    min_window_density,
-                    slot,
-                    slot_since_genesis,
-                    next_epoch_data: NextEpochData {
-                        seed,
-                        epoch_length,
-                        start_checkpoint,
-                        lock_checkpoint,
-                        ledger: NextEpochDataLedger {
-                            hash: ledger_hash,
-                            total_currency: ledger_total_currency,
-                        },
-                    },
-                    staking_epoch_data: StakingEpochData {
-                        seed: staking_seed,
-                        epoch_length: staking_epoch_length,
-                        start_checkpoint: staking_start_checkpoint,
-                        lock_checkpoint: staking_lock_checkpoint,
-                        ledger: StakingEpochDataLedger {
-                            hash: staking_ledger_hash,
-                            total_currency: staking_ledger_total_currency,
-                        },
-                    },
+                consensus_state: BlockProtocolStateConsensusState {
+                    total_currency: total_currency as f64,
+                    blockchain_length: Some(blockchain_length as i64),
+                    block_height: Some(block_height as i64),
+                    epoch: epoch as i64,
+                    epoch_count: Some(epoch_count as i64),
+                    has_ancestor_in_same_checkpoint_window: Some(
+                        has_ancestor_in_same_checkpoint_window,
+                    ),
+                    last_vrf_output: Some(last_vrf_output),
+                    min_window_density: Some(min_window_density as i64),
+                    slot: slot as i64,
+                    slot_since_genesis: slot_since_genesis as i64,
+                    next_epoch_data: Some(BlockProtocolStateConsensusStateNextEpochDatum {
+                        seed: Some(seed),
+                        epoch_length: Some(epoch_length as i64),
+                        start_checkpoint: Some(start_checkpoint),
+                        lock_checkpoint: Some(lock_checkpoint),
+                        ledger: Some(BlockProtocolStateConsensusStateNextEpochDatumLedger {
+                            hash: Some(ledger_hash),
+                            total_currency: Some(ledger_total_currency as f64),
+                        }),
+                    }),
+                    staking_epoch_data: Some(BlockProtocolStateConsensusStateStakingEpochDatum {
+                        seed: Some(staking_seed),
+                        epoch_length: Some(staking_epoch_length as i64),
+                        start_checkpoint: Some(staking_start_checkpoint),
+                        lock_checkpoint: Some(staking_lock_checkpoint),
+                        ledger: Some(BlockProtocolStateConsensusStateStakingEpochDatumLedger {
+                            hash: Some(staking_ledger_hash),
+                            total_currency: Some(staking_ledger_total_currency as f64),
+                        }),
+                    }),
                 },
             },
-            tx_fees: tx_fees.to_string(),
+            received_time: Some(DateTime(received_time)),
+            // TODO: fix
             snark_fees: snark_fees.to_string(),
+            snark_jobs: vec![],
+            // TODO: fix
+            state_hash: block.state_hash,
+            // TODO: fix - should this be Vec??
+            state_hash_field: None,
+            transactions: BlockTransaction {
+                coinbase: String::from("Not yet implemented"),
+                coinbase_receiver_account: BlockTransactionCoinbaseReceiverAccount {
+                    public_key: String::from("Not yet implemented"),
+                },
+                fee_transfer: vec![None],
+                user_commands: vec![None],
+            },
+            tx_fees: tx_fees.to_string(),
+            winner_account: BlockWinnerAccount {
+                public_key: winner_account.0,
+                balance: BlockWinnerAccountBalance {
+                    block_height: None,
+                    liquid: None,
+                    locked: None,
+                    state_hash: None,
+                    total: String::from("Not yet implemented"),
+                    unknown: None,
+                },
+            },
         }
     }
 }
