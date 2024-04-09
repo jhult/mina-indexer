@@ -1,10 +1,9 @@
+use super::{db, DataSource};
 use crate::{
     block::store::BlockStore,
     ledger::{account::Account as LAccount, store::LedgerStore},
-    store::IndexerStore,
 };
-use async_graphql::{Context, Enum, InputObject, Object, Result, SimpleObject};
-use std::sync::Arc;
+use async_graphql::{Context, Enum, InputObject, Result, SimpleObject};
 
 #[derive(SimpleObject)]
 pub struct Account {
@@ -38,11 +37,7 @@ pub enum AccountSortByInput {
     BalanceDesc,
 }
 
-#[derive(Default)]
-pub struct AccountQueryRoot;
-
-#[Object]
-impl AccountQueryRoot {
+impl DataSource {
     async fn accounts<'ctx>(
         &self,
         ctx: &Context<'ctx>,
@@ -50,9 +45,7 @@ impl AccountQueryRoot {
         sort_by: Option<AccountSortByInput>,
         limit: Option<usize>,
     ) -> Result<Option<Vec<Account>>> {
-        let db = ctx
-            .data::<Arc<IndexerStore>>()
-            .expect("db to be in context");
+        let db = db(ctx);
         let limit = limit.unwrap_or(100);
         let state_hash = match db.get_best_block_hash() {
             Ok(Some(state_hash)) => state_hash,
