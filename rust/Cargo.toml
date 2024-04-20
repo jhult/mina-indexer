@@ -22,7 +22,10 @@ anyhow = "1.0.81"
 bincode = "2.0.0-rc.3"
 derive_more = "0.99"
 serde = { version = "1.0.197", features = ["derive"] }
-serde_json = { version = "1.0.114", features = ["raw_value", "unbounded_depth"] }
+serde_json = { version = "1.0.114", features = [
+    "raw_value",
+    "unbounded_depth",
+] }
 smart-default = "0.7.1"
 clap = { version = "4.5.2", features = ["derive"] }
 thiserror = "1.0.58"
@@ -36,7 +39,8 @@ hex = "0.4.3"
 rand = "0.8.5"
 byteorder = "1.5.0"
 num = "0.4.1"
-speedb = { version = "0.0.5", default-features = false, features = ["zstd"] }
+async-nats = "0.34.0"
+futures = "0.3.30"
 id_tree = "1.8.0"
 time = { version = "0.3.34", features = ["serde-human-readable"] }
 log = "0.4.21"

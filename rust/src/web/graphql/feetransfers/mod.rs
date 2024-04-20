@@ -4,10 +4,11 @@ use crate::{
     canonicity::{store::CanonicityStore, Canonicity},
     command::{internal::InternalCommandWithData, store::CommandStore},
     constants::MAINNET_GENESIS_HASH,
-    store::IndexerStore,
+    store::{IndexerStore, IteratorDirection},
     web::{graphql::db, millis_to_iso_date_string},
 };
 use async_graphql::{Context, Enum, InputObject, Object, Result, SimpleObject};
+use async_nats::jetstream::consumer::{self, Consumer};
 use std::sync::Arc;
 
 #[derive(SimpleObject, Debug)]
@@ -89,46 +90,46 @@ impl FeetransferQueryRoot {
                 .and_then(|q| q.state_hash.as_ref())
                 .map_or(MAINNET_GENESIS_HASH, |s| s);
             let state_hash = BlockHash::from(state_hash);
-            return Ok(get_fee_transfers_for_state_hash(
-                db,
-                &state_hash,
-                sort_by,
-                limit,
-            ));
+            return Ok(get_fee_transfers_for_state_hash(db, &state_hash, sort_by, limit).await);
         }
-        get_fee_transfers(db, query, sort_by, limit)
+        get_fee_transfers(db, query, sort_by, limit).await
     }
 }
 
-fn get_block_canonicity(db: &Arc<IndexerStore>, state_hash: &str) -> Result<bool> {
+async fn get_block_canonicity(db: &Arc<IndexerStore>, state_hash: &str) -> Result<bool> {
     let canonicity = db
-        .get_block_canonicity(&BlockHash::from(state_hash.to_owned()))?
+        .get_block_canonicity(&BlockHash::from(state_hash.to_owned()))
+        .await?
         .map(|status| matches!(status, Canonicity::Canonical))
         .unwrap_or(false);
     Ok(canonicity)
 }
 
-fn get_fee_transfers(
+async fn get_fee_transfers(
     db: &Arc<IndexerStore>,
     query: Option<FeetransferQueryInput>,
     sort_by: Option<FeetransferSortByInput>,
     limit: usize,
 ) -> Result<Option<Vec<FeetransferWithMeta>>> {
+    use futures::StreamExt;
+
     let mut fee_transfers: Vec<FeetransferWithMeta> = Vec::with_capacity(limit);
-    let mode: speedb::IteratorMode = match sort_by {
-        Some(FeetransferSortByInput::BlockHeightAsc) => speedb::IteratorMode::Start,
-        Some(FeetransferSortByInput::BlockHeightDesc) => speedb::IteratorMode::End,
-        None => speedb::IteratorMode::End,
+    let mode: IteratorDirection = match sort_by {
+        Some(FeetransferSortByInput::BlockHeightAsc) => IteratorDirection::START,
+        _ => IteratorDirection::END,
     };
 
-    for entry in db.get_internal_commands_interator(mode) {
-        let (_, value) = entry?;
+    let consumer: Consumer<consumer::pull::Config> = db.get_internal_commands_interator(mode).await;
+
+    let mut messages = consumer.messages().await?;
+    while let Some(Ok(message)) = messages.next().await {
+        let value = message.payload.clone();
         let internal_command = serde_json::from_slice::<InternalCommandWithData>(&value)?;
         let ft = Feetransfer::from(internal_command);
         let state_hash = ft.state_hash.clone();
 
         let feetransfer_with_meta = FeetransferWithMeta {
-            canonical: get_block_canonicity(db, &state_hash)?,
+            canonical: get_block_canonicity(db, &state_hash).await?,
             feetransfer: ft,
             block: None,
         };
@@ -147,23 +148,24 @@ fn get_fee_transfers(
     Ok(Some(fee_transfers))
 }
 
-fn get_fee_transfers_for_state_hash(
+async fn get_fee_transfers_for_state_hash(
     db: &Arc<IndexerStore>,
     state_hash: &BlockHash,
     sort_by: Option<FeetransferSortByInput>,
     limit: usize,
 ) -> Option<Vec<FeetransferWithMeta>> {
-    let pcb = match db.get_block(state_hash).ok()? {
+    let pcb = match db.get_block(state_hash).await.ok()? {
         Some(pcb) => pcb,
         None => return None,
     };
     let canonical = db
         .get_block_canonicity(state_hash)
+        .await
         .ok()?
         .map(|status| matches!(status, Canonicity::Canonical))
         .unwrap_or(false);
 
-    match db.get_internal_commands(state_hash) {
+    match db.get_internal_commands(state_hash).await {
         Ok(internal_commands) => {
             let mut internal_commands: Vec<FeetransferWithMeta> = internal_commands
                 .into_iter()

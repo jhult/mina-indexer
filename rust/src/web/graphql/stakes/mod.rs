@@ -42,13 +42,13 @@ impl StakeQueryRoot {
             None => 0,
         };
 
-        let staking_ledger = match db.get_staking_ledger_at_epoch("mainnet", epoch)? {
+        let staking_ledger = match db.get_staking_ledger_at_epoch("mainnet", epoch).await? {
             Some(staking_ledger) => staking_ledger,
             None => return Ok(None),
         };
 
         // Delegations will be present if the staking ledger is
-        let delegations = db.get_delegations_epoch("mainnet", epoch)?.unwrap();
+        let delegations = db.get_delegations_epoch("mainnet", epoch).await?.unwrap();
 
         let ledger_hash = staking_ledger.ledger_hash.clone().0;
         let mut accounts: Vec<LedgerAccountWithMeta> = staking_ledger
