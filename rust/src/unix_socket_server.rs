@@ -131,12 +131,15 @@ async fn handle_conn(
             Accounts::PublicKey { public_key: pk } => {
                 info!("Received account command for {pk}");
 
-                if let Some(best_tip) = db.get_best_block()? {
-                    if let Some(ledger) = db.get_ledger_state_hash(
-                        &best_tip.network,
-                        &best_tip.state_hash.clone().into(),
-                        false,
-                    )? {
+                if let Some(best_tip) = db.get_best_block().await? {
+                    if let Some(ledger) = db
+                        .get_ledger_state_hash(
+                            &best_tip.network,
+                            &best_tip.state_hash.clone().into(),
+                            false,
+                        )
+                        .await?
+                    {
                         if !public_key::is_valid(&pk) {
                             invalid_public_key(&pk)
                         } else {
@@ -169,10 +172,13 @@ async fn handle_conn(
             Blocks::BestTip { verbose, path } => {
                 info!("Received best-tip command");
 
-                if let Some(best_tip) = db.get_best_block()? {
-                    if let Ok(Some(ref block)) = db.get_block(&best_tip.state_hash.clone().into()) {
-                        let block_str = if let Some(canonicity) =
-                            db.get_block_canonicity(&block.state_hash.clone().into())?
+                if let Some(best_tip) = db.get_best_block().await? {
+                    if let Ok(Some(ref block)) =
+                        db.get_block(&best_tip.state_hash.clone().into()).await
+                    {
+                        let block_str = if let Some(canonicity) = db
+                            .get_block_canonicity(&block.state_hash.clone().into())
+                            .await?
                         {
                             if verbose {
                                 serde_json::to_string_pretty(&block.with_canonicity(canonicity))?
@@ -214,9 +220,10 @@ async fn handle_conn(
                 info!("Received block-state-hash command");
                 if !block::is_valid_state_hash(&state_hash) {
                     invalid_state_hash(&state_hash)
-                } else if let Ok(Some(ref block)) = db.get_block(&state_hash.clone().into()) {
-                    let block_str = if let Some(canonicity) =
-                        db.get_block_canonicity(&block.state_hash.clone().into())?
+                } else if let Ok(Some(ref block)) = db.get_block(&state_hash.clone().into()).await {
+                    let block_str = if let Some(canonicity) = db
+                        .get_block_canonicity(&block.state_hash.clone().into())
+                        .await?
                     {
                         if verbose {
                             serde_json::to_string_pretty(&block.with_canonicity(canonicity))?
@@ -252,15 +259,16 @@ async fn handle_conn(
                 path,
             } => {
                 info!("Received blocks-at-height command");
-                let mut blocks_at_height = db.get_blocks_at_height(height)?;
+                let mut blocks_at_height = db.get_blocks_at_height(height).await?;
                 blocks_at_height.sort();
 
                 let blocks_str = if verbose {
                     let blocks: Vec<PrecomputedBlockWithCanonicity> = blocks_at_height
                         .iter()
                         .flat_map(|block| {
-                            if let Ok(Some(canonicity)) =
-                                db.get_block_canonicity(&block.state_hash.clone().into())
+                            if let Ok(Some(canonicity)) = db
+                                .get_block_canonicity(&block.state_hash.clone().into())
+                                .await
                             {
                                 Some(block.with_canonicity(canonicity))
                             } else {
@@ -273,8 +281,9 @@ async fn handle_conn(
                     let blocks: Vec<BlockWithoutHeight> = blocks_at_height
                         .iter()
                         .flat_map(|block| {
-                            if let Ok(Some(canonicity)) =
-                                db.get_block_canonicity(&block.state_hash.clone().into())
+                            if let Ok(Some(canonicity)) = db
+                                .get_block_canonicity(&block.state_hash.clone().into())
+                                .await
                             {
                                 Some(BlockWithoutHeight::with_canonicity(block, canonicity))
                             } else {
@@ -311,15 +320,16 @@ async fn handle_conn(
                 info!("Received blocks-at-slot command");
                 let slot: u32 = slot.parse()?;
 
-                let mut blocks_at_slot = db.get_blocks_at_slot(slot)?;
+                let mut blocks_at_slot = db.get_blocks_at_slot(slot).await?;
                 blocks_at_slot.sort();
 
                 let blocks_str = if verbose {
                     let blocks: Vec<PrecomputedBlockWithCanonicity> = blocks_at_slot
                         .iter()
                         .flat_map(|block| {
-                            if let Ok(Some(canonicity)) =
-                                db.get_block_canonicity(&block.state_hash.clone().into())
+                            if let Ok(Some(canonicity)) = db
+                                .get_block_canonicity(&block.state_hash.clone().into())
+                                .await
                             {
                                 Some(block.with_canonicity(canonicity))
                             } else {
@@ -332,8 +342,9 @@ async fn handle_conn(
                     let blocks: Vec<BlockWithoutHeight> = blocks_at_slot
                         .iter()
                         .flat_map(|block| {
-                            if let Ok(Some(canonicity)) =
-                                db.get_block_canonicity(&block.state_hash.clone().into())
+                            if let Ok(Some(canonicity)) = db
+                                .get_block_canonicity(&block.state_hash.clone().into())
+                                .await
                             {
                                 Some(BlockWithoutHeight::with_canonicity(block, canonicity))
                             } else {
@@ -372,15 +383,16 @@ async fn handle_conn(
                 if !public_key::is_valid(&pk) {
                     invalid_public_key(&pk)
                 } else {
-                    let mut blocks_at_pk = db.get_blocks_at_public_key(&pk.clone().into())?;
+                    let mut blocks_at_pk = db.get_blocks_at_public_key(&pk.clone().into()).await?;
                     blocks_at_pk.sort();
 
                     let blocks_str = if verbose {
                         let blocks: Vec<PrecomputedBlockWithCanonicity> = blocks_at_pk
                             .iter()
                             .flat_map(|block| {
-                                if let Ok(Some(canonicity)) =
-                                    db.get_block_canonicity(&block.state_hash.clone().into())
+                                if let Ok(Some(canonicity)) = db
+                                    .get_block_canonicity(&block.state_hash.clone().into())
+                                    .await
                                 {
                                     Some(block.with_canonicity(canonicity))
                                 } else {
@@ -393,8 +405,9 @@ async fn handle_conn(
                         let blocks: Vec<BlockWithoutHeight> = blocks_at_pk
                             .iter()
                             .flat_map(|block| {
-                                if let Ok(Some(canonicity)) =
-                                    db.get_block_canonicity(&block.state_hash.clone().into())
+                                if let Ok(Some(canonicity)) = db
+                                    .get_block_canonicity(&block.state_hash.clone().into())
+                                    .await
                                 {
                                     Some(BlockWithoutHeight::with_canonicity(block, canonicity))
                                 } else {
@@ -431,15 +444,16 @@ async fn handle_conn(
             } => {
                 info!("Received block-children command for block {}", state_hash);
 
-                let mut children = db.get_block_children(&state_hash.clone().into())?;
+                let mut children = db.get_block_children(&state_hash.clone().into()).await?;
                 children.sort();
 
                 let blocks_str = if verbose {
                     let blocks: Vec<PrecomputedBlockWithCanonicity> = children
                         .iter()
                         .flat_map(|block| {
-                            if let Ok(Some(canonicity)) =
-                                db.get_block_canonicity(&block.state_hash.clone().into())
+                            if let Ok(Some(canonicity)) = db
+                                .get_block_canonicity(&block.state_hash.clone().into())
+                                .await
                             {
                                 Some(block.with_canonicity(canonicity))
                             } else {
@@ -452,8 +466,9 @@ async fn handle_conn(
                     let blocks: Vec<BlockWithoutHeight> = children
                         .iter()
                         .flat_map(|block| {
-                            if let Ok(Some(canonicity)) =
-                                db.get_block_canonicity(&block.state_hash.clone().into())
+                            if let Ok(Some(canonicity)) = db
+                                .get_block_canonicity(&block.state_hash.clone().into())
+                                .await
                             {
                                 Some(BlockWithoutHeight::with_canonicity(block, canonicity))
                             } else {
@@ -500,7 +515,7 @@ async fn handle_conn(
 
                 let start_state_hash: BlockHash = start_state_hash.into();
 
-                if let Some(best_tip) = db.get_best_block()? {
+                if let Some(best_tip) = db.get_best_block().await? {
                     let end_state_hash: String = {
                         if end_state_hash.is_none() {
                             best_tip.state_hash.clone()
@@ -517,8 +532,8 @@ async fn handle_conn(
                     if !block::is_valid_state_hash(&start_state_hash.0) {
                         invalid_state_hash(&start_state_hash.0)
                     } else if let (Some(end_block), Some(start_block)) = (
-                        db.get_block(&end_state_hash.into())?,
-                        db.get_block(&start_state_hash)?,
+                        db.get_block(&end_state_hash.into()).await?,
+                        db.get_block(&start_state_hash).await?,
                     ) {
                         let start_height = start_block.blockchain_length;
                         let end_height = end_block.blockchain_length;
@@ -527,7 +542,7 @@ async fn handle_conn(
 
                         // constrain by num and state hash bound
                         for _ in 1..num.min(end_height.saturating_sub(start_height) + 1) {
-                            if let Some(parent_pcb) = db.get_block(&parent_hash)? {
+                            if let Some(parent_pcb) = db.get_block(&parent_hash).await? {
                                 let curr_hash: BlockHash = parent_pcb.state_hash.clone().into();
                                 parent_hash = parent_pcb.previous_state_hash();
                                 best_chain.push(parent_pcb);
@@ -558,8 +573,9 @@ async fn handle_conn(
                             let best_chain: Vec<BlockWithoutHeight> = best_chain
                                 .iter()
                                 .flat_map(|block| {
-                                    if let Ok(Some(canonicity)) =
-                                        db.get_block_canonicity(&block.state_hash.clone().into())
+                                    if let Ok(Some(canonicity)) = db
+                                        .get_block_canonicity(&block.state_hash.clone().into())
+                                        .await
                                     {
                                         Some(BlockWithoutHeight::with_canonicity(block, canonicity))
                                     } else {
@@ -615,12 +631,15 @@ async fn handle_conn(
             Ledgers::Best { path } => {
                 info!("Received best-ledger command");
 
-                if let Some(best_tip) = db.get_best_block()? {
-                    if let Some(ledger) = db.get_ledger_state_hash(
-                        &best_tip.network,
-                        &best_tip.state_hash.clone().into(),
-                        false,
-                    )? {
+                if let Some(best_tip) = db.get_best_block().await? {
+                    if let Some(ledger) = db
+                        .get_ledger_state_hash(
+                            &best_tip.network,
+                            &best_tip.state_hash.clone().into(),
+                            false,
+                        )
+                        .await?
+                    {
                         let ledger = ledger.to_string_pretty();
 
                         if path.is_none() {
@@ -658,8 +677,9 @@ async fn handle_conn(
                 if block::is_valid_state_hash(&hash) {
                     trace!("{hash} is a state hash");
 
-                    if let Some(ledger) =
-                        db.get_ledger_state_hash("mainnet", &hash.clone().into(), true)?
+                    if let Some(ledger) = db
+                        .get_ledger_state_hash("mainnet", &hash.clone().into(), true)
+                        .await?
                     {
                         let ledger = ledger.to_string_pretty();
                         if path.is_none() {
@@ -686,7 +706,9 @@ async fn handle_conn(
                 } else if ledger::is_valid_ledger_hash(&hash) {
                     trace!("{hash} is a ledger hash");
 
-                    if let Some(ledger) = db.get_ledger("mainnet", &LedgerHash(hash.clone()))? {
+                    if let Some(ledger) =
+                        db.get_ledger("mainnet", &LedgerHash(hash.clone())).await?
+                    {
                         let ledger = ledger.to_string_pretty();
                         if path.is_none() {
                             debug!("Writing ledger at hash {hash} to stdout");
@@ -717,22 +739,22 @@ async fn handle_conn(
             Ledgers::Height { height, path } => {
                 info!("Received ledger-at-height {height} command");
 
-                if let Some(best_tip) = db.get_best_block()? {
+                if let Some(best_tip) = db.get_best_block().await? {
                     if height > best_tip.blockchain_length {
                         // ahead of witness tree - cannot compute
                         Some(format!("Invalid query: ledger at height {height} cannot be determined from a chain of length {}", best_tip.blockchain_length))
                     } else {
                         let ledger_str = if Some(height)
-                            > db.get_max_canonical_blockchain_length()?
+                            > db.get_max_canonical_blockchain_length().await?
                         {
                             // follow best chain back from tip to given height block and get the
                             // ledger
                             if let Some(mut curr_block) =
-                                db.get_block(&best_tip.state_hash.into())?
+                                db.get_block(&best_tip.state_hash.into()).await?
                             {
                                 while curr_block.blockchain_length > height {
                                     if let Some(parent) =
-                                        db.get_block(&curr_block.previous_state_hash())?
+                                        db.get_block(&curr_block.previous_state_hash()).await?
                                     {
                                         curr_block = parent;
                                     } else {
@@ -740,11 +762,14 @@ async fn handle_conn(
                                     }
                                 }
 
-                                if let Some(ledger) = db.get_ledger_state_hash(
-                                    "mainnet",
-                                    &curr_block.state_hash.clone().into(),
-                                    true,
-                                )? {
+                                if let Some(ledger) = db
+                                    .get_ledger_state_hash(
+                                        "mainnet",
+                                        &curr_block.state_hash.clone().into(),
+                                        true,
+                                    )
+                                    .await?
+                                {
                                     ledger.to_string_pretty()
                                 } else {
                                     block_missing_from_db(&curr_block.state_hash)
@@ -753,7 +778,7 @@ async fn handle_conn(
                                 best_tip_missing_from_db().unwrap()
                             }
                         } else if let Some(ledger) =
-                            db.get_ledger_at_height("mainnet", height, true)?
+                            db.get_ledger_at_height("mainnet", height, true).await?
                         {
                             ledger.to_string_pretty()
                         } else {
@@ -795,10 +820,11 @@ async fn handle_conn(
                 if ledger::is_valid_ledger_hash(&hash) {
                     trace!("{hash} is a ledger hash");
 
-                    if let Some(staking_ledger) =
-                        db.get_staking_ledger_hash(&network, &hash.clone().into())?
+                    if let Some(staking_ledger) = db
+                        .get_staking_ledger_hash(&network, &hash.clone().into())
+                        .await?
                     {
-                        let ledger_json = serde_json::to_string_pretty(&staking_ledger)?;
+                        let ledger_json = serde_json::to_string_pretty(&staking_ledger).await?;
                         if path.is_none() {
                             debug!("Writing staking ledger at hash {hash} to stdout");
                             Some(ledger_json)
@@ -832,7 +858,9 @@ async fn handle_conn(
             } => {
                 info!("Received staking-ledgers-epoch {epoch} command");
 
-                if let Some(staking_ledger) = db.get_staking_ledger_at_epoch(&network, epoch)? {
+                if let Some(staking_ledger) =
+                    db.get_staking_ledger_at_epoch(&network, epoch).await?
+                {
                     let ledger_json = serde_json::to_string_pretty(&staking_ledger)?;
                     if path.is_none() {
                         debug!("Writing staking ledger at epoch {epoch} to stdout");
@@ -872,7 +900,7 @@ async fn handle_conn(
                 if !public_key::is_valid(&pk) {
                     invalid_public_key(&pk)
                 } else if let Some(aggegated_delegations) =
-                    db.get_delegations_epoch(&network, epoch)?
+                    db.get_delegations_epoch(&network, epoch).await?
                 {
                     let pk: PublicKey = pk.into();
                     let epoch = aggegated_delegations.epoch;
@@ -917,7 +945,7 @@ async fn handle_conn(
                     network, epoch
                 );
 
-                let aggregated_delegations = db.get_delegations_epoch(&network, epoch)?;
+                let aggregated_delegations = db.get_delegations_epoch(&network, epoch).await?;
                 if let Some(agg_del_str) = aggregated_delegations
                     .map(|agg_del| serde_json::to_string_pretty(&agg_del).unwrap())
                 {
@@ -971,7 +999,8 @@ async fn handle_conn(
                     invalid_public_key(&pk)
                 } else {
                     let snarks = db
-                        .get_snark_work_by_public_key(&pk.clone().into())?
+                        .get_snark_work_by_public_key(&pk.clone().into())
+                        .await?
                         .unwrap_or(vec![]);
                     let snarks_str = format_vec_jq_compatible(&snarks);
 
@@ -1004,7 +1033,8 @@ async fn handle_conn(
                 if !block::is_valid_state_hash(&state_hash) {
                     invalid_state_hash(&state_hash)
                 } else {
-                    db.get_snark_work_in_block(&state_hash.clone().into())?
+                    db.get_snark_work_in_block(&state_hash.clone().into())
+                        .await?
                         .and_then(|snarks| {
                             let snarks_str = format_vec_jq_compatible(&snarks);
                             if path.is_none() {
@@ -1088,7 +1118,7 @@ async fn handle_conn(
                     let raw = end_state_hash.unwrap_or("x".to_string());
                     if &raw == "x" {
                         // dummy value replaced with best block state hash
-                        if let Some(best_tip) = db.get_best_block()? {
+                        if let Some(best_tip) = db.get_best_block().await? {
                             best_tip.state_hash.into()
                         } else {
                             best_tip_missing_from_db().unwrap().into()
@@ -1106,7 +1136,7 @@ async fn handle_conn(
                 } else if !block::is_valid_state_hash(&end_state_hash.0) {
                     invalid_state_hash(&end_state_hash.0)
                 } else {
-                    let transactions = db.get_commands_for_public_key(&pk.clone().into())?;
+                    let transactions = db.get_commands_for_public_key(&pk.clone().into()).await?;
                     let transaction_str = if verbose {
                         format_vec_jq_compatible(&transactions)
                     } else {
@@ -1139,7 +1169,7 @@ async fn handle_conn(
                 if !signed::is_valid_tx_hash(&hash) {
                     invalid_tx_hash(&hash)
                 } else {
-                    db.get_command_by_hash(&hash)?.map(|cmd| {
+                    db.get_command_by_hash(&hash).await?.map(|cmd| {
                         if verbose {
                             format!("{cmd:?}")
                         } else {
@@ -1159,7 +1189,7 @@ async fn handle_conn(
                     invalid_state_hash(&state_hash)
                 } else {
                     let block_hash = BlockHash(state_hash.to_owned());
-                    Some(db.get_commands_in_block(&block_hash).map(|cmds| {
+                    Some(db.get_commands_in_block(&block_hash).await.map(|cmds| {
                         let transaction_str = if verbose {
                             format_vec_jq_compatible(&cmds)
                         } else {
@@ -1198,7 +1228,9 @@ async fn handle_conn(
                 if !public_key::is_valid(&pk) {
                     invalid_public_key(&pk)
                 } else {
-                    let internal_cmds = db.get_internal_commands_public_key(&pk.clone().into())?;
+                    let internal_cmds = db
+                        .get_internal_commands_public_key(&pk.clone().into())
+                        .await?;
                     let internal_cmds_str = serde_json::to_string_pretty(&internal_cmds)?;
 
                     if path.is_none() {
@@ -1228,7 +1260,7 @@ async fn handle_conn(
                     invalid_state_hash(&state_hash)
                 } else {
                     let internal_cmds_str = serde_json::to_string_pretty(
-                        &db.get_internal_commands(&state_hash.clone().into())?,
+                        &db.get_internal_commands(&state_hash.clone().into()).await?,
                     )?;
 
                     if path.is_none() {

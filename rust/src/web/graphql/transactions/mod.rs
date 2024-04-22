@@ -12,7 +12,7 @@ use crate::{
     },
     store::{
         user_commands_iterator, user_commands_iterator_signed_command,
-        user_commands_iterator_txn_hash, IndexerStore,
+        user_commands_iterator_txn_hash, IndexerStore, IteratorDirection,
     },
     web::graphql::{gen::TransactionQueryInput, DateTime},
 };
@@ -35,8 +35,9 @@ impl TransactionsQueryRoot {
             if signed::is_valid_tx_hash(&hash) {
                 let db = db(ctx);
                 return Ok(db
-                    .get_command_by_hash(&hash)?
-                    .map(|cmd| txn_from_hash(cmd, db)));
+                    .get_command_by_hash(&hash)
+                    .await?
+                    .map(|cmd| txn_from_hash(cmd, db).await));
             }
         }
         Ok(None)
@@ -49,6 +50,8 @@ impl TransactionsQueryRoot {
         limit: Option<usize>,
         sort_by: TransactionSortByInput,
     ) -> Result<Vec<Option<Transaction>>> {
+        use futures::StreamExt;
+
         let db = db(ctx);
         let limit = limit.unwrap_or(100);
 
@@ -57,16 +60,17 @@ impl TransactionsQueryRoot {
         // sort mode
         let mode = match sort_by {
             TransactionSortByInput::BlockheightAsc | TransactionSortByInput::DatetimeAsc => {
-                speedb::IteratorMode::Start
+                IteratorDirection::START
             }
             TransactionSortByInput::BlockheightDesc | TransactionSortByInput::DatetimeDesc => {
-                speedb::IteratorMode::End
+                IteratorDirection::END
             }
         };
 
-        let iter = user_commands_iterator(db, mode);
+        let consumer = user_commands_iterator(db, mode).await;
+        let mut messages = consumer.messages().await?;
 
-        for entry in iter {
+        while let Some(Ok(entry)) = messages.next().await {
             let txn_hash = user_commands_iterator_txn_hash(&entry)?;
 
             if let Some(query_txn_hash) = query.hash.to_owned() {
@@ -77,7 +81,7 @@ impl TransactionsQueryRoot {
 
             let cmd = user_commands_iterator_signed_command(&entry)?;
 
-            let transaction = txn_from_hash(cmd, db);
+            let transaction = txn_from_hash(cmd, db).await;
 
             // Only add transactions that satisfy the input query
             if query.matches(&transaction) {
@@ -93,12 +97,13 @@ impl TransactionsQueryRoot {
     }
 }
 
-fn txn_from_hash(cmd: SignedCommandWithData, db: &Arc<IndexerStore>) -> Transaction {
+async fn txn_from_hash(cmd: SignedCommandWithData, db: &Arc<IndexerStore>) -> Transaction {
     let block_state_hash = cmd.state_hash.to_owned();
     let block_date_time = date_time_to_scalar(cmd.date_time as i64);
 
     let canonical = match db
         .get_block_canonicity(&block_state_hash.to_owned())
+        .await
         .unwrap()
     {
         Some(canonicity) => canonicity == Canonicity::Canonical,

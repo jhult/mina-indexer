@@ -68,7 +68,7 @@ impl MinaIndexer {
         let domain_socket_path = config.domain_socket_path.clone();
         Ok(Self {
             _witness_join_handle: tokio::spawn(async move {
-                let state = initialize(config, store).unwrap_or_else(|e| {
+                let state = initialize(config, store).await.unwrap_or_else(|e| {
                     error!("Error in server initialization: {}", e);
                     std::process::exit(1);
                 });
@@ -121,7 +121,7 @@ async fn wait_for_signal() {
     }
 }
 
-pub fn initialize(
+pub async fn initialize(
     config: IndexerConfiguration,
     store: Arc<IndexerStore>,
 ) -> anyhow::Result<IndexerState> {
@@ -193,7 +193,7 @@ pub fn initialize(
                 state.initialize_with_canonical_chain_discovery(&mut block_parser)?;
             }
             InitializationMode::Replay => {
-                let min_length_filter = state.replay_events()?;
+                let min_length_filter = state.replay_events().await?;
                 let mut block_parser =
                     BlockParser::new_length_sorted_min_filtered(blocks_dir, min_length_filter)?;
 
@@ -203,7 +203,7 @@ pub fn initialize(
                 }
             }
             InitializationMode::Sync => {
-                let min_length_filter = state.sync_from_db()?;
+                let min_length_filter = state.sync_from_db().await?;
                 let mut block_parser =
                     BlockParser::new_length_sorted_min_filtered(blocks_dir, min_length_filter)?;
 
@@ -217,10 +217,10 @@ pub fn initialize(
         match initialization_mode {
             InitializationMode::New => (),
             InitializationMode::Replay => {
-                state.replay_events()?;
+                state.replay_events().await?;
             }
             InitializationMode::Sync => {
-                state.sync_from_db()?;
+                state.sync_from_db().await?;
             }
         }
     }
@@ -353,7 +353,7 @@ async fn process_event(event: Event, state: &Arc<RwLock<IndexerState>>) {
                             let epoch = staking_ledger.epoch;
                             let ledger_hash = staking_ledger.ledger_hash.clone();
                             let ledger_summary = staking_ledger.summary();
-                            match store.add_staking_ledger(staking_ledger) {
+                            match store.add_staking_ledger(staking_ledger).await {
                                 Ok(_) => {
                                     state.staking_ledgers.insert(epoch, ledger_hash);
                                     info!("Added staking ledger {}", ledger_summary);

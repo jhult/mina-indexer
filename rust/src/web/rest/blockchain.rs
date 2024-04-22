@@ -159,10 +159,11 @@ pub async fn get_blockchain_summary(
     locked_balances: Data<Arc<LockedBalances>>,
 ) -> HttpResponse {
     let db = store.as_ref();
-    if let Ok(Some(best_tip)) = db.get_best_block() {
+    if let Ok(Some(best_tip)) = db.get_best_block().await {
         debug!("Found best tip: {:?}", best_tip.state_hash);
-        if let Ok(Some(best_ledger)) =
-            db.get_ledger_state_hash(&best_tip.network, &best_tip.state_hash.clone().into(), true)
+        if let Ok(Some(best_ledger)) = db
+            .get_ledger_state_hash(&best_tip.network, &best_tip.state_hash.clone().into(), true)
+            .await
         {
             let global_slot = best_tip
                 .consensus_state()

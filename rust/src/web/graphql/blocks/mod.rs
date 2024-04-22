@@ -26,25 +26,26 @@ impl BlocksQueryRoot {
             if let Some(state_hash) = &query.state_hash {
                 BlockHash::from(state_hash.clone())
             } else {
-                match db.get_canonical_hash_at_height(1)? {
+                match db.get_canonical_hash_at_height(1).await? {
                     Some(state_hash) => state_hash,
                     None => return Ok(None),
                 }
             }
         } else {
-            match db.get_canonical_hash_at_height(1)? {
+            match db.get_canonical_hash_at_height(1).await? {
                 Some(state_hash) => state_hash,
                 None => return Ok(None),
             }
         };
 
-        let pcb = match db.get_block(&state_hash)? {
+        let pcb = match db.get_block(&state_hash).await? {
             Some(pcb) => pcb,
             None => return Ok(None),
         };
         let block = Block::from(pcb);
         let canonical = db
-            .get_block_canonicity(&state_hash)?
+            .get_block_canonicity(&state_hash)
+            .await?
             .map(|status| matches!(status, Canonicity::Canonical))
             .unwrap_or(false);
         Ok(Some(BlockWithCanonicity { block, canonical }))

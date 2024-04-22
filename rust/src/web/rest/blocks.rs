@@ -28,7 +28,7 @@ pub async fn get_blocks(
     let db = store.as_ref();
     let limit = get_limit(params.limit);
 
-    if let Ok(Some(best_tip)) = db.get_best_block() {
+    if let Ok(Some(best_tip)) = db.get_best_block().await {
         let mut best_chain: Box<Vec<PrecomputedBlock>> = Box::new(vec![best_tip.clone()]);
         let mut counter = 1;
         let mut parent_state_hash = best_tip.previous_state_hash();
@@ -37,7 +37,7 @@ pub async fn get_blocks(
             if counter == limit {
                 break;
             }
-            if let Ok(Some(block)) = db.get_block(&parent_state_hash) {
+            if let Ok(Some(block)) = db.get_block(&parent_state_hash).await {
                 parent_state_hash = block.previous_state_hash();
                 best_chain.push(block);
             } else {
@@ -60,7 +60,7 @@ pub async fn get_block(
     state_hash: web::Path<String>,
 ) -> HttpResponse {
     let db = store.as_ref();
-    if let Ok(Some(ref block)) = db.get_block(&state_hash.clone().into()) {
+    if let Ok(Some(ref block)) = db.get_block(&state_hash.clone().into()).await {
         let body = serde_json::to_string(block).unwrap();
         return HttpResponse::Ok()
             .content_type(ContentType::json())

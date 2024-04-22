@@ -54,14 +54,14 @@ impl AccountQueryRoot {
             .data::<Arc<IndexerStore>>()
             .expect("db to be in context");
         let limit = limit.unwrap_or(100);
-        let state_hash = match db.get_best_block_hash() {
+        let state_hash = match db.get_best_block_hash().await {
             Ok(Some(state_hash)) => state_hash,
             Ok(None) => return Ok(None),
             Err(_) => {
                 return Ok(None);
             }
         };
-        let ledger = match db.get_ledger_state_hash("mainnet", &state_hash, true) {
+        let ledger = match db.get_ledger_state_hash("mainnet", &state_hash, true).await {
             Ok(Some(ledger)) => ledger,
             Ok(None) => return Ok(None),
             Err(_) => {
