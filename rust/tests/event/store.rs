@@ -1,6 +1,7 @@
 use crate::helpers::setup_new_db_dir;
 use mina_indexer::{
     block::{vrf_output::VrfOutput, Block, BlockHash},
+    chain_id::Network,
     event::{block::*, db::*, ledger::*, store::*, witness_tree::*, *},
     ledger::LedgerHash,
     store::IndexerStore,
@@ -34,7 +35,7 @@ fn add_and_get_events() {
     }));
     let event4 = IndexerEvent::StakingLedgerWatcher(StakingLedgerWatcherEvent::NewStakingLedger {
         epoch: 0,
-        network: "mainnet".into(),
+        network: Network::Mainnet,
         ledger_hash: LedgerHash("jx7buQVWFLsXTtzRgSxbYcT8EYLS8KCZbLrfDcJxMtyy4thw2Ee".into()),
     });
     let block = Block {

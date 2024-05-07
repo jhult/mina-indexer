@@ -10,7 +10,7 @@ use crate::{
         Block, BlockHash, BlockWithoutHeight,
     },
     canonicity::{store::CanonicityStore, Canonicity},
-    chain_id::store::ChainIdStore,
+    chain_id::{store::ChainIdStore, Network},
     command::store::CommandStore,
     constants::*,
     event::{block::*, db::*, ledger::*, store::*, witness_tree::*, IndexerEvent},
@@ -186,7 +186,7 @@ impl IndexerState {
 
         // add genesis block and ledger to indexer store
         config.indexer_store.add_ledger_state_hash(
-            &config.version.network.0,
+            &config.version.network,
             &MAINNET_GENESIS_PREV_STATE_HASH.into(),
             config.genesis_ledger.clone().into(),
         )?;
@@ -294,7 +294,7 @@ impl IndexerState {
             let store = IndexerStore::new(path).unwrap();
             if let Some(ledger) = root_ledger.clone() {
                 store
-                    .add_ledger_state_hash("mainnet", &root_block.state_hash(), ledger)
+                    .add_ledger_state_hash(&Network::Mainnet, &root_block.state_hash(), ledger)
                     .expect("ledger add succeeds");
                 store
                     .set_best_block(&root_block.state_hash())
@@ -384,7 +384,7 @@ impl IndexerState {
                         self.ledger._apply_diff(&ledger_diff)?;
                         ledger_diff = LedgerDiff::default();
                         indexer_store.add_ledger_state_hash(
-                            &self.version.network.0,
+                            &self.version.network,
                             &state_hash,
                             self.ledger.clone(),
                         )?;
@@ -1203,7 +1203,7 @@ impl IndexerState {
     /// Check that all relevant data & indices exist and are consistent
     fn replay_precomputed_block(
         &mut self,
-        network: &str,
+        network: &Network,
         state_hash: &BlockHash,
         blockchain_length: &u32,
     ) -> anyhow::Result<()> {
@@ -1298,7 +1298,7 @@ impl IndexerState {
 
     fn replay_staking_ledger(
         &self,
-        network: &str,
+        network: &Network,
         epoch: &u32,
         ledger_hash: &LedgerHash,
     ) -> anyhow::Result<()> {
@@ -1410,7 +1410,7 @@ impl IndexerState {
             for canonical_block in canonical_blocks {
                 if canonical_block.blockchain_length % self.ledger_cadence == 0 {
                     indexer_store.add_ledger_state_hash(
-                        &self.version.network.0,
+                        &self.version.network,
                         &canonical_block.state_hash,
                         self.ledger.clone(),
                     )?;

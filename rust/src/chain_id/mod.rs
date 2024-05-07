@@ -1,7 +1,11 @@
 pub mod store;
 
 use crate::constants::*;
+use bincode::{Decode, Encode};
 use hex::ToHex;
+use quickcheck::{Arbitrary, Gen};
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ChainId(pub String);
@@ -42,6 +46,73 @@ pub fn chain_id(
     let mut hasher = Blake2bVar::new(32).unwrap();
     hasher.write_all(digest_str.as_bytes()).unwrap();
     ChainId(hasher.finalize_boxed().to_vec().encode_hex())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, Serialize, Deserialize)]
+pub enum Network {
+    Mainnet,
+    Devnet,
+    Testworld,
+    Berkeley,
+}
+
+impl Arbitrary for Network {
+    fn arbitrary(g: &mut Gen) -> Self {
+        let idx = usize::arbitrary(g) % 4;
+        match idx {
+            0 => Network::Mainnet,
+            1 => Network::Devnet,
+            2 => Network::Testworld,
+            3 => Network::Berkeley,
+            _ => panic!("should never happen"),
+        }
+    }
+}
+
+impl Network {
+    const MAINNET: &'static str = "mainnet";
+    const DEVNET: &'static str = "devnet";
+    const TESTWORLD: &'static str = "testworld";
+    const BERKELEY: &'static str = "berkeley";
+}
+
+impl Display for Network {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Network::Mainnet => Network::MAINNET,
+                Network::Devnet => Network::DEVNET,
+                Network::Testworld => Network::TESTWORLD,
+                Network::Berkeley => Network::BERKELEY,
+            }
+        )
+    }
+}
+
+impl From<Vec<u8>> for Network {
+    fn from(value: Vec<u8>) -> Self {
+        Network::from(String::from_utf8(value).unwrap().as_str())
+    }
+}
+
+impl From<&str> for Network {
+    fn from(value: &str) -> Self {
+        match value {
+            Network::MAINNET => Network::Mainnet,
+            Network::DEVNET => Network::Devnet,
+            Network::TESTWORLD => Network::Testworld,
+            Network::BERKELEY => Network::Berkeley,
+            _ => panic!("{value} is not a valid network"),
+        }
+    }
+}
+
+impl From<Network> for clap::builder::OsStr {
+    fn from(value: Network) -> Self {
+        value.into()
+    }
 }
 
 #[cfg(test)]
