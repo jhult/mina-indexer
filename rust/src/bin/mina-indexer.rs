@@ -92,7 +92,7 @@ pub struct ServerArgs {
     pub database_dir: PathBuf,
 
     /// Max stdout log level
-    #[arg(long, default_value_t = LevelFilter::Warn)]
+    #[arg(long, default_value_t = LevelFilter::Trace)]
     pub log_level: LevelFilter,
 
     /// Number of blocks to add to the canonical chain before persisting a
@@ -234,7 +234,7 @@ pub async fn main() -> anyhow::Result<()> {
             // initialize logging
             stderrlog::new()
                 .module(module_path!())
-                .color(ColorChoice::Never)
+                .color(ColorChoice::Auto)
                 .timestamp(Timestamp::Microsecond)
                 .verbosity(args.log_level)
                 .init()
