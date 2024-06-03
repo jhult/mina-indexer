@@ -588,7 +588,7 @@ async fn handle_conn(
                     ))
                 } else {
                     debug!("Creating checkpoint at {}", path.display());
-                    db.create_checkpoint(&path)?;
+                    db.create_snapshot(&path)?;
                     Some(format!(
                         "Checkpoint created and saved to {}",
                         path.display()

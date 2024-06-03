@@ -178,7 +178,7 @@ impl IndexerStore {
         Ok(primary)
     }
 
-    pub fn create_checkpoint(&self, path: &Path) -> anyhow::Result<()> {
+    pub fn create_snapshot(&self, path: &Path) -> anyhow::Result<()> {
         use speedb::checkpoint::Checkpoint;
 
         let checkpoint = Checkpoint::new(&self.database)?;
