@@ -299,13 +299,13 @@ impl IndexerState {
         root_block: &PrecomputedBlock,
         root_block_bytes: u64,
         root_ledger: Option<Ledger>,
-        speedb_path: Option<&std::path::Path>,
+        db_path: Option<&std::path::Path>,
         transition_frontier_length: Option<u32>,
         ledger_cadence: Option<u32>,
         reporting_freq: Option<u32>,
     ) -> anyhow::Result<Self> {
         let root_branch = Branch::new_testing(root_block);
-        let indexer_store = speedb_path.map(|path| {
+        let indexer_store = db_path.map(|path| {
             let store = IndexerStore::new(path).unwrap();
             if let Some(ledger) = root_ledger.clone() {
                 store
