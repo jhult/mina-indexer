@@ -322,38 +322,5 @@ pub fn txn_block_key(txn_hash: &str, state_hash: BlockHash) -> Vec<u8> {
 impl FixedKeys for IndexerStore {}
 
 impl IndexerStore {
-    pub fn db_stats(&self) -> String {
-        self.database
-            .property_value(speedb::properties::DBSTATS)
-            .unwrap()
-            .unwrap()
-    }
-
-    pub fn memtables_size(&self) -> String {
-        self.database
-            .property_value(speedb::properties::CUR_SIZE_ALL_MEM_TABLES)
-            .unwrap()
-            .unwrap()
-    }
-
-    pub fn estimate_live_data_size(&self) -> u64 {
-        self.database
-            .property_int_value(speedb::properties::ESTIMATE_LIVE_DATA_SIZE)
-            .unwrap()
-            .unwrap()
-    }
-
-    pub fn estimate_num_keys(&self) -> u64 {
-        self.database
-            .property_int_value(speedb::properties::ESTIMATE_NUM_KEYS)
-            .unwrap()
-            .unwrap()
-    }
-
-    pub fn cur_size_all_mem_tables(&self) -> u64 {
-        self.database
-            .property_int_value(speedb::properties::CUR_SIZE_ALL_MEM_TABLES)
-            .unwrap()
-            .unwrap()
-    }
+    // TODO: expose redb::TableStats
 }
