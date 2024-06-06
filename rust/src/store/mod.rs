@@ -3,7 +3,6 @@
 
 // traits
 pub mod account;
-pub mod column_families;
 pub mod fixed_keys;
 pub mod username;
 pub mod version;
@@ -40,7 +39,7 @@ use version::{IndexerStoreVersion, VersionStore};
 #[derive(Debug)]
 pub struct IndexerStore {
     pub db_path: PathBuf,
-    pub database: DB,
+    pub database: Database,
     pub is_primary: bool,
 }
 
@@ -51,131 +50,12 @@ pub struct DBUpdate<T> {
 }
 
 impl IndexerStore {
-    /// Add the corresponding CF helper to [ColumnFamilyHelpers]
-    /// & modify [IndexerStoreVersion] as needed!
-    const COLUMN_FAMILIES: [&'static str; 80] = [
-        // accounts
-        "account-balance",
-        "account-balance-sort",
-        "account-balance-updates",
-        // blocks
-        "blocks-state-hash",
-        "blocks-version",
-        "blocks-at-length",
-        "blocks-at-slot",
-        "blocks-height",
-        "blocks-global-slot",
-        "blocks-parent-hash",
-        "blocks-epoch",
-        "blocks-genesis-hash",
-        "blocks-height-to-slots",
-        "blocks-slot-to-heights",
-        "blocks-height-sort",
-        "blocks-global-slot-sort",
-        "blocks-comparison",
-        "blocks-coinbase-receiver",
-        "blocks-creator",
-        "block-creator-height-sort",
-        "block-creator-slot-sort",
-        "coinbase-receiver-height-sort",
-        "coinbase-receiver-slot-sort",
-        // canonicity
-        "canonicity-length",
-        "canonicity-slot",
-        // user commands
-        "user-commands",
-        "user-commands-pk",
-        "user-commands-pk-num",
-        "user-commands-block",
-        "user-commands-block-order",
-        "user-commands-num-blocks",
-        "user-commands-slot-sort",
-        "user-commands-height-sort",
-        "user-commands-to-global-slot",
-        "user-commands-to-block-height",
-        "user-command-state-hashes",
-        // sorting user commands by sender/receiver
-        "txn-from-slot-sort",
-        "txn-from-height-sort",
-        "txn-to-slot-sort",
-        "txn-to-height-sort",
-        // SNARKs
-        "snarks",
-        "snark-work-top-producers",
-        "snark-work-top-producers-sort",
-        "snark-work-fees",
-        "snark-work-prover",
-        "snark-work-prover-height",
-        // internal commands
-        "internal-commands",
-        "internal-commands-global-slot",
-        // indexer store events
-        "events",
-        // staged ledgers
-        "ledgers",
-        "blocks-ledger-diff",
-        "blocks-staged-ledger-hash",
-        // staking ledgers & delegations
-        "staking-ledgers",
-        "staking-delegations",
-        "staking-ledger-genesis-hash",
-        "staking-ledger-epoch-to-hash",
-        "staking-ledger-hash-to-epoch",
-        // sorting staking ledgers
-        "staking-ledger-epoch",
-        "staking-ledger-balance",
-        "staking-ledger-stake",
-        "staking-ledger-accounts-epoch",
-        // chain id
-        "chain-id-to-network",
-        // usernames
-        "username-pk-num",
-        "username-pk-index",
-        "usernames-per-block",
-        // block counts
-        "block-production-pk-epoch",
-        "block-production-pk-total",
-        "block-production-epoch",
-        "block-snark-counts",
-        "block-user-command-counts",
-        "block-internal-command-counts",
-        // user command counts
-        "user-commands-epoch",
-        "user-commands-pk-epoch",
-        "user-commands-pk-total",
-        // internal command counts
-        "internal-commands-epoch",
-        "internal-commands-pk-epoch",
-        "internal-commands-pk-total",
-        // SNARK counts
-        "snarks-epoch",
-        "snarks-pk-epoch",
-        "snarks-pk-total",
-    ];
-
     /// Creates a new _primary_ indexer store
     pub fn new(path: &Path) -> anyhow::Result<Self> {
-        let mut cf_opts = speedb::Options::default();
-        cf_opts.set_max_write_buffer_number(16);
-        cf_opts.set_compression_type(DBCompressionType::Zstd);
-
-        let mut database_opts = speedb::Options::default();
-        database_opts.set_compression_type(DBCompressionType::Zstd);
-        database_opts.create_missing_column_families(true);
-        database_opts.create_if_missing(true);
-
-        let column_families: Vec<ColumnFamilyDescriptor> = Self::COLUMN_FAMILIES
-            .iter()
-            .map(|cf| ColumnFamilyDescriptor::new(*cf, cf_opts.clone()))
-            .collect();
         let primary = Self {
             is_primary: true,
             db_path: path.into(),
-            database: speedb::DBWithThreadMode::open_cf_descriptors(
-                &database_opts,
-                path,
-                column_families,
-            )?,
+            database: Database::create(path),
         };
 
         // set db version
