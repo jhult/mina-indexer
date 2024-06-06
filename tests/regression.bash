@@ -758,7 +758,7 @@ test_ledgers() {
     teardown
 }
 
-# Indexer server syncs with existing Speedb
+# Indexer server syncs with existing database
 test_sync() {
     enter_test test_sync
 

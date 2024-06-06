@@ -105,7 +105,7 @@ pub struct ServerArgs {
     #[arg(long)]
     staking_ledger_watch_dir: Option<PathBuf>,
 
-    /// Path to directory for speedb
+    /// Path to directory for database
     #[arg(long, default_value = "/var/log/mina-indexer/database")]
     pub database_dir: PathBuf,
 
