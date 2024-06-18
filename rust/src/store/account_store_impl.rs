@@ -1,14 +1,18 @@
-use super::column_families::ColumnFamilyHelpers;
 use crate::{
     block::{store::BlockStore, BlockHash},
     canonicity::store::CanonicityStore,
     constants::*,
     ledger::{diff::account::PaymentDiff, public_key::PublicKey},
-    store::{account::AccountStore, u64_prefix_key, DBUpdate, IndexerStore},
+    store::{
+        account::AccountStore,
+        database::{ACCOUNT_BALANCE, ACCOUNT_BALANCE_SORT, ACCOUNT_BALANCE_UPDATES},
+        u64_prefix_key, DBUpdate, IndexerStore,
+    },
 };
 use log::trace;
-use speedb::{DBIterator, IteratorMode};
 use std::collections::HashSet;
+
+use super::{DBIterator, IteratorAnchor};
 
 impl AccountStore for IndexerStore {
     fn reorg_account_balance_updates(
@@ -81,10 +85,7 @@ impl AccountStore for IndexerStore {
         state_hash: &BlockHash,
     ) -> anyhow::Result<Option<(PublicKey, Vec<PaymentDiff>)>> {
         trace!("Getting block balance updates for {state_hash}");
-        Ok(self
-            .database
-            .get_pinned_cf(self.account_balance_updates_cf(), state_hash.0.as_bytes())?
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok()))
+        Ok(self.get(ACCOUNT_BALANCE_UPDATES, state_hash))
     }
 
     fn update_account_balances(
@@ -129,10 +130,8 @@ impl AccountStore for IndexerStore {
         if balance.is_none() {
             // delete stale data
             let b = self.get_account_balance(pk)?.unwrap_or(0);
-            self.database
-                .delete_cf(self.account_balance_cf(), pk.0.as_bytes())?;
-            self.database
-                .delete_cf(self.account_balance_sort_cf(), u64_prefix_key(b, &pk.0))?;
+            self.delete(ACCOUNT_BALANCE, pk)?;
+            self.delete(ACCOUNT_BALANCE_SORT, u64_prefix_key(b, &pk.0))?;
             return Ok(());
         }
 
@@ -142,11 +141,7 @@ impl AccountStore for IndexerStore {
             self.database
                 .delete_cf(self.account_balance_sort_cf(), u64_prefix_key(old, &pk.0))?;
         }
-        self.database.put_cf(
-            self.account_balance_cf(),
-            pk.0.as_bytes(),
-            balance.to_be_bytes(),
-        )?;
+        self.put(ACCOUNT_BALANCE, pk, balance);
 
         // add: {balance}{pk} -> _
         self.database.put_cf(
@@ -164,11 +159,11 @@ impl AccountStore for IndexerStore {
         balance_updates: Vec<PaymentDiff>,
     ) -> anyhow::Result<()> {
         trace!("Setting block balance updates for {state_hash}");
-        self.database.put_cf(
-            self.account_balance_updates_cf(),
-            state_hash.0.as_bytes(),
-            serde_json::to_vec(&(coinbase_receiver, balance_updates))?,
-        )?;
+        self.put(
+            ACCOUNT_BALANCE_UPDATES,
+            state_hash,
+            &(coinbase_receiver, balance_updates),
+        );
         Ok(())
     }
 
@@ -189,7 +184,7 @@ impl AccountStore for IndexerStore {
     // Iterators //
     ///////////////
 
-    fn account_balance_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
+    fn account_balance_iterator<'a>(&'a self, mode: IteratorAnchor) -> DBIterator<K, V> {
         self.database
             .iterator_cf(self.account_balance_sort_cf(), mode)
     }

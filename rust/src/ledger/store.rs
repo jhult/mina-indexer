@@ -1,5 +1,6 @@
 //! Store of staged ledgers, staking ledgers, and staking delegations
 
+use super::{public_key::PublicKey, staking::StakingAccount};
 use crate::{
     block::BlockHash,
     ledger::{
@@ -7,8 +8,8 @@ use crate::{
         staking::{AggregatedEpochStakeDelegations, StakingLedger},
         Ledger, LedgerHash,
     },
+    store::{DBIterator, IteratorAnchor},
 };
-use speedb::{DBIterator, IteratorMode};
 
 pub trait LedgerStore {
     ////////////////////
@@ -133,8 +134,11 @@ pub trait LedgerStore {
     ///////////////
 
     /// Per epoch staking ledger account iterator via balance
-    fn staking_ledger_balance_iterator(&self, mode: IteratorMode) -> DBIterator<'_>;
+    fn staking_ledger_balance_iterator(&self, mode: IteratorAnchor) -> DBIterator<K, V>;
 
     /// Per epoch staking ledger account iterator via stake (total delegations)
-    fn staking_ledger_stake_iterator(&self, mode: IteratorMode) -> DBIterator<'_>;
+    fn staking_ledger_stake_iterator(
+        &self,
+        mode: IteratorAnchor,
+    ) -> DBIterator<Vec<u8>, StakingAccount>;
 }

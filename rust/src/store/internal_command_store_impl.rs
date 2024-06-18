@@ -1,12 +1,17 @@
-use super::{column_families::ColumnFamilyHelpers, fixed_keys::FixedKeys};
+use super::{fixed_keys::FixedKeys, DBIterator, IndexerStore, IteratorAnchor};
 use crate::{
     block::{precomputed::PrecomputedBlock, store::BlockStore, BlockHash},
     command::internal::{store::InternalCommandStore, InternalCommand, InternalCommandWithData},
     ledger::public_key::PublicKey,
-    store::{from_be_bytes, to_be_bytes, u32_prefix_key, IndexerStore},
+    store::{
+        database::{
+            BLOCK_INTERNAL_COMMAND_COUNTS, INDEXED_U32, INTERNAL_COMMANDS_EPOCH,
+            INTERNAL_COMMANDS_PK_EPOCH, INTERNAL_COMMANDS_PK_TOTAL, INTERNAL_COMMANDS_SLOT,
+        },
+        from_be_bytes, to_be_bytes,
+    },
 };
 use log::trace;
-use speedb::DBIterator;
 
 impl InternalCommandStore for IndexerStore {
     /// Index internal commands on public keys & state hash
@@ -38,21 +43,9 @@ impl InternalCommandStore for IndexerStore {
             self.increment_internal_commands_counts(internal_cmd, epoch)?;
         }
 
-        fn internal_commmand_key(global_slot: u32, state_hash: &str, index: usize) -> Vec<u8> {
-            let mut bytes = to_be_bytes(global_slot);
-            bytes.append(&mut state_hash.as_bytes().to_vec());
-            bytes.append(&mut index.to_be_bytes().to_vec());
-            bytes
-        }
-
         for (i, int_cmd) in internal_cmds_with_data.iter().enumerate() {
-            let key =
-                internal_commmand_key(block.global_slot_since_genesis(), &block.state_hash().0, i);
-            self.database.put_cf(
-                self.internal_commands_slot_cf(),
-                key,
-                serde_json::to_vec(&int_cmd)?,
-            )?;
+            let key = (block.global_slot_since_genesis(), &block.state_hash().0, i);
+            self.put(INTERNAL_COMMANDS_SLOT, key, &int_cmd)
         }
 
         for pk in block.all_public_keys() {
@@ -115,7 +108,6 @@ impl InternalCommandStore for IndexerStore {
     ) -> anyhow::Result<Vec<InternalCommandWithData>> {
         trace!("Getting internal commands for public key {}", pk.0);
 
-        let commands_cf = self.internal_commands_cf();
         let mut internal_cmds = vec![];
         fn key_n(pk: String, n: u32) -> Vec<u8> {
             format!("internal-{}-{}", pk, n).as_bytes().to_vec()
@@ -125,7 +117,7 @@ impl InternalCommandStore for IndexerStore {
             for m in 0..n {
                 if let Some(mut block_m_internal_cmds) = self
                     .database
-                    .get_pinned_cf(commands_cf, key_n(pk.0.clone(), m))?
+                    .get_pinned_cf(self.internal_commands_cf(), key_n(pk.0.clone(), m))?
                     .map(|bytes| {
                         serde_json::from_slice::<Vec<InternalCommandWithData>>(&bytes)
                             .expect("internal commands with data")
@@ -157,29 +149,21 @@ impl InternalCommandStore for IndexerStore {
 
     fn internal_commands_global_slot_interator(
         &self,
-        mode: speedb::IteratorMode,
-    ) -> DBIterator<'_> {
-        self.database
-            .iterator_cf(self.internal_commands_slot_cf(), mode)
+        mode: IteratorAnchor,
+    ) -> DBIterator<(u32, &String, usize), InternalCommandWithData> {
+        self.iterator(INTERNAL_COMMANDS_SLOT)
     }
 
     fn get_internal_commands_epoch_count(&self, epoch: Option<u32>) -> anyhow::Result<u32> {
         let epoch = epoch.unwrap_or(self.get_current_epoch()?);
         trace!("Getting internal command epoch {epoch}");
-        Ok(self
-            .database
-            .get_pinned_cf(self.internal_commands_epoch_cf(), to_be_bytes(epoch))?
-            .map_or(0, |bytes| from_be_bytes(bytes.to_vec())))
+        Ok(self.get(INTERNAL_COMMANDS_EPOCH, epoch))
     }
 
     fn increment_internal_commands_epoch_count(&self, epoch: u32) -> anyhow::Result<()> {
         trace!("Incrementing internal command epoch {epoch}");
         let old = self.get_internal_commands_epoch_count(Some(epoch))?;
-        Ok(self.database.put_cf(
-            self.internal_commands_epoch_cf(),
-            to_be_bytes(epoch),
-            to_be_bytes(old + 1),
-        )?)
+        Ok(self.put(INTERNAL_COMMANDS_EPOCH, epoch, old + 1))
     }
 
     fn get_internal_commands_total_count(&self) -> anyhow::Result<u32> {
@@ -194,9 +178,7 @@ impl InternalCommandStore for IndexerStore {
         trace!("Incrementing internal command total");
 
         let old = self.get_internal_commands_total_count()?;
-        Ok(self
-            .database
-            .put(Self::TOTAL_NUM_FEE_TRANSFERS_KEY, to_be_bytes(old + 1))?)
+        Ok(self.put(INDEXED_U32, Self::TOTAL_NUM_FEE_TRANSFERS_KEY, old + 1))
     }
 
     fn get_internal_commands_pk_epoch_count(
@@ -206,13 +188,7 @@ impl InternalCommandStore for IndexerStore {
     ) -> anyhow::Result<u32> {
         let epoch = epoch.unwrap_or(self.get_current_epoch()?);
         trace!("Getting internal command epoch {epoch} num {pk}");
-        Ok(self
-            .database
-            .get_pinned_cf(
-                self.internal_commands_pk_epoch_cf(),
-                u32_prefix_key(epoch, &pk.0),
-            )?
-            .map_or(0, |bytes| from_be_bytes(bytes.to_vec())))
+        Ok(self.get(INTERNAL_COMMANDS_PK_EPOCH, (epoch, pk)))
     }
 
     fn increment_internal_commands_pk_epoch_count(
@@ -223,30 +199,20 @@ impl InternalCommandStore for IndexerStore {
         trace!("Incrementing pk epoch {epoch} internal commands count {pk}");
 
         let old = self.get_internal_commands_pk_epoch_count(pk, Some(epoch))?;
-        Ok(self.database.put_cf(
-            self.internal_commands_pk_epoch_cf(),
-            u32_prefix_key(epoch, &pk.0),
-            to_be_bytes(old + 1),
-        )?)
+
+        Ok(self.put(INTERNAL_COMMANDS_PK_EPOCH, (epoch, &pk.0), old + 1))
     }
 
     fn get_internal_commands_pk_total_count(&self, pk: &PublicKey) -> anyhow::Result<u32> {
         trace!("Getting pk total internal commands count {pk}");
-        Ok(self
-            .database
-            .get_pinned_cf(self.internal_commands_pk_total_cf(), pk.0.as_bytes())?
-            .map_or(0, |bytes| from_be_bytes(bytes.to_vec())))
+        Ok(self.get(INTERNAL_COMMANDS_PK_TOTAL, pk))
     }
 
     fn increment_internal_commands_pk_total_count(&self, pk: &PublicKey) -> anyhow::Result<()> {
         trace!("Incrementing internal command pk total num {pk}");
 
         let old = self.get_internal_commands_pk_total_count(pk)?;
-        Ok(self.database.put_cf(
-            self.internal_commands_pk_total_cf(),
-            pk.0.as_bytes(),
-            to_be_bytes(old + 1),
-        )?)
+        Ok(self.put(INTERNAL_COMMANDS_PK_TOTAL, pk, old + 1))
     }
 
     fn get_block_internal_commands_count(
@@ -254,13 +220,7 @@ impl InternalCommandStore for IndexerStore {
         state_hash: &BlockHash,
     ) -> anyhow::Result<Option<u32>> {
         trace!("Getting block internal command count");
-        Ok(self
-            .database
-            .get_pinned_cf(
-                self.block_internal_command_counts_cf(),
-                state_hash.0.as_bytes(),
-            )?
-            .map(|bytes| from_be_bytes(bytes.to_vec())))
+        Ok(self.get(BLOCK_INTERNAL_COMMAND_COUNTS, state_hash))
     }
 
     fn set_block_internal_commands_count(
@@ -269,11 +229,7 @@ impl InternalCommandStore for IndexerStore {
         count: u32,
     ) -> anyhow::Result<()> {
         trace!("Setting block internal command count {state_hash} -> {count}");
-        Ok(self.database.put_cf(
-            self.block_internal_command_counts_cf(),
-            state_hash.0.as_bytes(),
-            to_be_bytes(count),
-        )?)
+        Ok(self.put(BLOCK_INTERNAL_COMMAND_COUNTS, state_hash, count)?)
     }
 
     fn increment_internal_commands_counts(

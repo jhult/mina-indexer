@@ -1,3 +1,5 @@
+use crate::store::database::INDEXER_STORE_VERSION;
+
 use super::{
     fixed_keys::FixedKeys,
     version::{IndexerStoreVersion, VersionStore},
@@ -21,14 +23,14 @@ impl VersionStore for IndexerStore {
         };
         trace!("Setting db version");
         if self
-            .database
-            .get(Self::INDEXER_STORE_VERSION_KEY)?
+            .get(INDEXER_STORE_VERSION, Self::INDEXER_STORE_VERSION_KEY)
             .is_none()
         {
-            self.database.put(
+            self.put(
+                INDEXER_STORE_VERSION,
                 Self::INDEXER_STORE_VERSION_KEY,
-                serde_json::to_vec(&version)?,
-            )?;
+                version,
+            )
         }
         Ok(())
     }
@@ -36,10 +38,6 @@ impl VersionStore for IndexerStore {
     /// Get db version
     fn get_db_version(&self) -> anyhow::Result<IndexerStoreVersion> {
         trace!("Getting db version");
-        Ok(self
-            .database
-            .get(Self::INDEXER_STORE_VERSION_KEY)?
-            .map(|bytes| serde_json::from_slice(&bytes).expect("db version bytes"))
-            .expect("db version some"))
+        Ok(self.get(INDEXER_STORE_VERSION, Self::INDEXER_STORE_VERSION_KEY))
     }
 }

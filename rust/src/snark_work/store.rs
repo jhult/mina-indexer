@@ -2,8 +2,9 @@ use super::{SnarkWorkSummary, SnarkWorkSummaryWithStateHash, SnarkWorkTotal};
 use crate::{
     block::{precomputed::PrecomputedBlock, BlockHash},
     ledger::public_key::PublicKey,
+    store::{DBIterator, IteratorAnchor},
+    web::graphql::snarks::SnarkWithCanonicity,
 };
-use speedb::{DBIterator, IteratorMode};
 
 pub trait SnarkStore {
     /// Add snark work in a precomputed block
@@ -31,10 +32,13 @@ pub trait SnarkStore {
     fn get_top_snark_workers_by_fees(&self, n: usize) -> anyhow::Result<Vec<SnarkWorkTotal>>;
 
     /// [DBIterator] over top SNARK producers by accumulated fees
-    fn top_snark_workers_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn top_snark_workers_iterator<'a>(&'a self, mode: IteratorAnchor) -> DBIterator<K, V>;
 
     /// [DBIterator] over SNARKs by fee
-    fn snark_fees_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn snark_fees_iterator<'a>(
+        &'a self,
+        mode: IteratorAnchor,
+    ) -> DBIterator<(u64, u32, PublicKey, BlockHash), u32>;
 
     /// Set the SNARK for the prover in `global_slot` at `index`
     fn set_snark_by_prover(
@@ -45,7 +49,10 @@ pub trait SnarkStore {
     ) -> anyhow::Result<()>;
 
     /// Iterator over SNARKs by prover, sorted by global slot & index
-    fn snark_prover_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn snark_prover_iterator<'a>(
+        &'a self,
+        mode: IteratorAnchor,
+    ) -> DBIterator<(PublicKey, u32, u32), SnarkWithCanonicity>;
 
     /// Increment snarks per epoch count
     fn increment_snarks_epoch_count(&self, epoch: u32) -> anyhow::Result<()>;

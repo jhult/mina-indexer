@@ -1,10 +1,13 @@
-use super::{column_families::ColumnFamilyHelpers, fixed_keys::FixedKeys};
+use super::{
+    database::{CANONICITY_LENGTH, CANONICITY_SLOT},
+    fixed_keys::FixedKeys,
+};
 use crate::{
     block::{store::BlockStore, BlockHash},
     canonicity::{store::CanonicityStore, Canonicity, CanonicityDiff, CanonicityUpdate},
     event::{db::*, store::EventStore, IndexerEvent},
     snark_work::store::SnarkStore,
-    store::{to_be_bytes, DBUpdate, IndexerStore},
+    store::{database::INDEXED_U32, to_be_bytes, DBUpdate, IndexerStore},
 };
 use anyhow::Context;
 use log::trace;
@@ -25,18 +28,11 @@ impl CanonicityStore for IndexerStore {
         }
 
         // height -> state hash
-        self.database.put_cf(
-            self.canonicity_length_cf(),
-            to_be_bytes(height),
-            state_hash.0.as_bytes(),
-        )?;
+        self.put(CANONICITY_LENGTH, height, state_hash);
 
         // slot -> state hash
-        self.database.put_cf(
-            self.canonicity_slot_cf(),
-            to_be_bytes(global_slot),
-            state_hash.0.as_bytes(),
-        )?;
+        self.database
+            .write(CANONICITY_SLOT, global_slot, state_hash);
 
         // update top snarkers based on the incoming canonical block
         if let Some(completed_works) = self.get_snark_work_in_block(state_hash)? {
@@ -101,18 +97,12 @@ impl CanonicityStore for IndexerStore {
 
     fn get_canonical_hash_at_height(&self, height: u32) -> anyhow::Result<Option<BlockHash>> {
         trace!("Getting canonical state hash at height {height}");
-        Ok(self
-            .database
-            .get_pinned_cf(&self.canonicity_length_cf(), to_be_bytes(height))?
-            .and_then(|bytes| BlockHash::from_bytes(&bytes).ok()))
+        Ok(self.get(CANONICITY_LENGTH, height))
     }
 
     fn get_canonical_hash_at_slot(&self, global_slot: u32) -> anyhow::Result<Option<BlockHash>> {
         trace!("Getting canonical state hash at slot {global_slot}");
-        Ok(self
-            .database
-            .get_pinned_cf(&self.canonicity_slot_cf(), to_be_bytes(global_slot))?
-            .and_then(|bytes| BlockHash::from_bytes(&bytes).ok()))
+        Ok(self.get(CANONICITY_SLOT, global_slot))
     }
 
     fn get_block_canonicity(&self, state_hash: &BlockHash) -> anyhow::Result<Option<Canonicity>> {

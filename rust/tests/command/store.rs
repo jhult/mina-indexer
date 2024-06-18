@@ -18,7 +18,6 @@ use mina_indexer::{
     state::IndexerState,
     store::*,
 };
-use speedb::IteratorMode;
 use std::{path::PathBuf, sync::Arc};
 
 #[tokio::test]
@@ -94,7 +93,7 @@ async fn add_and_get() -> anyhow::Result<()> {
     // iterate over transactions via block height
     let mut curr_height = 0;
     for (key, _) in indexer_store
-        .user_commands_height_iterator(IteratorMode::End)
+        .user_commands_height_iterator(IteratorAnchor::End)
         .flatten()
     {
         let txn_hash = user_commands_iterator_txn_hash(&key)?;
@@ -121,7 +120,7 @@ async fn add_and_get() -> anyhow::Result<()> {
     // iterate over transactions via global slot
     let mut curr_slot = 0;
     for (key, _) in indexer_store
-        .user_commands_slot_iterator(IteratorMode::End)
+        .user_commands_slot_iterator(IteratorAnchor::End)
         .flatten()
     {
         let txn_hash = user_commands_iterator_txn_hash(&key)?;

@@ -8,8 +8,9 @@ use crate::{
         public_key::PublicKey,
     },
 };
-use speedb::{DBIterator, IteratorMode};
 use std::collections::{HashMap, HashSet};
+
+use super::{DBIterator, IteratorAnchor};
 
 pub trait AccountStore {
     /// Update pk's balance-sorted account balance
@@ -57,7 +58,7 @@ pub trait AccountStore {
     /// ```
     /// - balance: 8 BE bytes
     /// - pk:      [PublicKey::LEN] bytes
-    fn account_balance_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn account_balance_iterator<'a>(&'a self, mode: IteratorAnchor) -> DBIterator<K, V>;
 }
 
 impl DBUpdate<PaymentDiff> {

@@ -1,4 +1,6 @@
-use super::{column_families::ColumnFamilyHelpers, fixed_keys::FixedKeys};
+use super::{
+    database::{BLOCKS_GLOBAL_SLOT_SORT, BLOCKS_HEIGHT_SORT}, fixed_keys::FixedKeys, DBIterator, Direction, IteratorAnchor,
+};
 use crate::{
     block::{
         precomputed::{PcbVersion, PrecomputedBlock},
@@ -15,13 +17,16 @@ use crate::{
     },
     snark_work::store::SnarkStore,
     store::{
-        account::AccountStore, block_state_hash_from_key, block_u32_prefix_from_key, from_be_bytes,
-        to_be_bytes, u32_prefix_key, username::UsernameStore, DBUpdate, IndexerStore,
+        account::AccountStore,
+        block_state_hash_from_key, block_u32_prefix_from_key,
+        database::{
+            BLOCKCHAIN_LENGTH, BLOCKS, BLOCKS_GLOBAL_SLOT_IDX, BLOCKS_VERSION, BLOCK_CREATOR, BLOCK_EPOCH, BLOCK_GENESIS_STATE_HASH, BLOCK_GLOBAL_SLOT_TO_HEIGHT, BLOCK_HEIGHT, BLOCK_HEIGHT_TO_GLOBAL_SLOTS, BLOCK_PARENT_HASH, BLOCK_PRODUCTION_EPOCH, BLOCK_PRODUCTION_PK_EPOCH, BLOCK_PRODUCTION_PK_TOTAL, COINBASE_RECEIVERS, STRING_KEYS
+        },
+        from_be_bytes, to_be_bytes, DBUpdate, IndexerStore,
     },
 };
-use anyhow::{bail, Context};
+use anyhow::bail;
 use log::{error, trace};
-use speedb::{DBIterator, Direction, IteratorMode};
 
 impl BlockStore for IndexerStore {
     /// Add the given block at its indices and record a db event
@@ -30,19 +35,12 @@ impl BlockStore for IndexerStore {
 
         // add block to db
         let state_hash = block.state_hash();
-        if matches!(
-            self.database
-                .get_pinned_cf(self.blocks_cf(), state_hash.0.as_bytes()),
-            Ok(Some(_))
-        ) {
+
+        if matches!(self.get_block(&state_hash), Ok(Some(_))) {
             trace!("Block already present {}", block.summary());
             return Ok(None);
         }
-        self.database.put_cf(
-            self.blocks_cf(),
-            state_hash.0.as_bytes(),
-            serde_json::to_vec(&block)?,
-        )?;
+        self.put(BLOCKS, &state_hash, block);
 
         // add to ledger diff index
         self.set_block_ledger_diff(&state_hash, LedgerDiff::from_precomputed(block))?;
@@ -90,14 +88,9 @@ impl BlockStore for IndexerStore {
             <DBUpdate<PaymentDiff>>::from_precomputed(block),
         )?;
 
-        // add block height/global slot for sorting
-        self.database
-            .put_cf(self.blocks_height_sort_cf(), block_height_key(block), b"")?;
-        self.database.put_cf(
-            self.blocks_global_slot_sort_cf(),
-            block_global_slot_key(block),
-            b"",
-        )?;
+        // add to global slots block index
+        // TODO: fix
+        self.put(BLOCKS_GLOBAL_SLOT_IDX, block_global_slot_key(block), b"");
 
         // add block for each public key
         for pk in block.all_public_keys() {
@@ -134,14 +127,7 @@ impl BlockStore for IndexerStore {
 
     fn get_block(&self, state_hash: &BlockHash) -> anyhow::Result<Option<PrecomputedBlock>> {
         trace!("Getting block {state_hash}");
-        Ok(self
-            .database
-            .get_pinned_cf(self.blocks_cf(), state_hash.0.as_bytes())?
-            .and_then(|bytes| {
-                serde_json::from_slice::<PrecomputedBlock>(&bytes)
-                    .with_context(|| format!("{:?}", bytes.to_vec()))
-                    .ok()
-            }))
+        Ok(self.get(BLOCKS, state_hash))
     }
 
     fn get_best_block(&self) -> anyhow::Result<Option<PrecomputedBlock>> {
@@ -154,10 +140,9 @@ impl BlockStore for IndexerStore {
 
     fn get_best_block_hash(&self) -> anyhow::Result<Option<BlockHash>> {
         trace!("Getting best block hash");
-        Ok(self
-            .database
-            .get(Self::BEST_TIP_STATE_HASH_KEY)?
-            .and_then(|bytes| BlockHash::from_bytes(&bytes).ok()))
+
+        let block_hash: Option<BlockHash> = self.get(STRING_KEYS, Self::BEST_TIP_STATE_HASH_KEY);
+        Ok(block_hash)
     }
 
     fn get_best_block_height(&self) -> anyhow::Result<Option<u32>> {
@@ -205,7 +190,7 @@ impl BlockStore for IndexerStore {
 
         // set new best tip
         self.database
-            .put(Self::BEST_TIP_STATE_HASH_KEY, state_hash.0.as_bytes())?;
+            .write(STRING_KEYS, Self::BEST_TIP_STATE_HASH_KEY, state_hash.0);
 
         // record new best tip event
         match self.get_block_height(state_hash)? {
@@ -224,10 +209,7 @@ impl BlockStore for IndexerStore {
 
     fn get_block_parent_hash(&self, state_hash: &BlockHash) -> anyhow::Result<Option<BlockHash>> {
         trace!("Getting block's parent hash {state_hash}");
-        Ok(self
-            .database
-            .get_cf(self.block_parent_hash_cf(), state_hash.0.as_bytes())?
-            .and_then(|bytes| BlockHash::from_bytes(&bytes).ok()))
+        Ok(self.get(BLOCK_PARENT_HASH, state_hash))
     }
 
     fn set_block_parent_hash(
@@ -235,20 +217,18 @@ impl BlockStore for IndexerStore {
         state_hash: &BlockHash,
         previous_state_hash: &BlockHash,
     ) -> anyhow::Result<()> {
-        trace!("Setting block parent hash {state_hash}: {previous_state_hash}");
-        Ok(self.database.put_cf(
-            self.block_parent_hash_cf(),
-            state_hash.0.as_bytes(),
-            previous_state_hash.0.as_bytes(),
-        )?)
+        trace!(
+            "Setting block parent hash {} -> {}",
+            state_hash,
+            previous_state_hash
+        );
+
+        Ok(self.put(BLOCK_PARENT_HASH, state_hash, previous_state_hash))
     }
 
     fn get_block_height(&self, state_hash: &BlockHash) -> anyhow::Result<Option<u32>> {
-        trace!("Getting block height {state_hash}");
-        Ok(self
-            .database
-            .get_cf(self.block_height_cf(), state_hash.0.as_bytes())?
-            .map(from_be_bytes))
+        trace!("Getting blockchain length {state_hash}");
+        Ok(self.get(BLOCK_HEIGHT, state_hash))
     }
 
     fn set_block_height(
@@ -256,12 +236,8 @@ impl BlockStore for IndexerStore {
         state_hash: &BlockHash,
         blockchain_length: u32,
     ) -> anyhow::Result<()> {
-        trace!("Setting block height {state_hash}: {blockchain_length}");
-        Ok(self.database.put_cf(
-            self.block_height_cf(),
-            state_hash.0.as_bytes(),
-            to_be_bytes(blockchain_length),
-        )?)
+        trace!("Setting blockchain length {blockchain_length}: {state_hash}");
+        Ok(self.put(BLOCK_HEIGHT, state_hash, blockchain_length))
     }
 
     fn get_block_global_slot(&self, state_hash: &BlockHash) -> anyhow::Result<Option<u32>> {
@@ -287,10 +263,7 @@ impl BlockStore for IndexerStore {
 
     fn get_block_creator(&self, state_hash: &BlockHash) -> anyhow::Result<Option<PublicKey>> {
         trace!("Getting block creator {state_hash}");
-        Ok(self
-            .database
-            .get_cf(self.block_creator_cf(), state_hash.0.as_bytes())?
-            .and_then(|bytes| PublicKey::from_bytes(&bytes).ok()))
+        Ok(self.get(BLOCK_CREATOR, state_hash))
     }
 
     fn set_block_creator(&self, block: &PrecomputedBlock) -> anyhow::Result<()> {
@@ -299,11 +272,7 @@ impl BlockStore for IndexerStore {
         trace!("Setting block creator: {state_hash} -> {block_creator}");
 
         // index
-        self.database.put_cf(
-            self.block_creator_cf(),
-            state_hash.0.as_bytes(),
-            block_creator.0.as_bytes(),
-        )?;
+        self.put(BLOCK_CREATOR, state_hash, block_creator)?;
 
         // block height sort
         self.database.put_cf(
@@ -326,45 +295,14 @@ impl BlockStore for IndexerStore {
 
     fn get_coinbase_receiver(&self, state_hash: &BlockHash) -> anyhow::Result<Option<PublicKey>> {
         trace!("Getting coinbase receiver for {state_hash}");
-        Ok(self
-            .database
-            .get_cf(self.block_coinbase_receiver_cf(), state_hash.0.as_bytes())?
-            .and_then(|bytes| PublicKey::from_bytes(&bytes).ok()))
+        Ok(self.get(COINBASE_RECEIVERS, state_hash))
     }
 
     fn set_coinbase_receiver(&self, block: &PrecomputedBlock) -> anyhow::Result<()> {
         let state_hash = block.state_hash();
         let coinbase_receiver = block.coinbase_receiver();
         trace!("Setting coinbase receiver: {state_hash} -> {coinbase_receiver}");
-
-        // index
-        self.database.put_cf(
-            self.block_coinbase_receiver_cf(),
-            state_hash.0.as_bytes(),
-            coinbase_receiver.0.as_bytes(),
-        )?;
-
-        // block height sort
-        self.database.put_cf(
-            self.block_coinbase_height_sort_cf(),
-            pk_block_sort_key(
-                coinbase_receiver.clone(),
-                block.blockchain_length(),
-                state_hash.clone(),
-            ),
-            b"",
-        )?;
-
-        // global slot sort
-        Ok(self.database.put_cf(
-            self.block_coinbase_slot_sort_cf(),
-            pk_block_sort_key(
-                coinbase_receiver.clone(),
-                block.global_slot_since_genesis(),
-                state_hash.clone(),
-            ),
-            b"",
-        )?)
+        Ok(self.put(COINBASE_RECEIVERS, state_hash, coinbase_receiver))
     }
 
     fn get_num_blocks_at_height(&self, blockchain_length: u32) -> anyhow::Result<u32> {
@@ -558,7 +496,7 @@ impl BlockStore for IndexerStore {
     }
 
     fn get_block_children(&self, state_hash: &BlockHash) -> anyhow::Result<Vec<PrecomputedBlock>> {
-        trace!("Getting children of block {}", state_hash);
+        trace!("Getting children of block {state_hash}");
 
         if let Some(height) = self.get_block(state_hash)?.map(|b| b.blockchain_length()) {
             let blocks_at_next_height = self.get_blocks_at_height(height + 1)?;
@@ -573,21 +511,13 @@ impl BlockStore for IndexerStore {
     }
 
     fn get_block_version(&self, state_hash: &BlockHash) -> anyhow::Result<Option<PcbVersion>> {
-        trace!("Getting block {} version", state_hash.0);
-        let key = state_hash.0.as_bytes();
-        Ok(self
-            .database
-            .get_pinned_cf(self.block_version_cf(), key)?
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok()))
+        trace!("Getting block {state_hash} version");
+        Ok(self.get(BLOCKS_VERSION, state_hash))
     }
 
     fn set_block_version(&self, state_hash: &BlockHash, version: PcbVersion) -> anyhow::Result<()> {
-        trace!("Setting block {} version to {}", state_hash.0, version);
-        Ok(self.database.put_cf(
-            self.block_version_cf(),
-            state_hash.0.as_bytes(),
-            serde_json::to_vec(&version)?,
-        )?)
+        trace!("Setting block {state_hash} version to {version}");
+        Ok(self.put(BLOCKS_VERSION, state_hash, version))
     }
 
     fn set_block_height_global_slot_pair(
@@ -632,27 +562,18 @@ impl BlockStore for IndexerStore {
         blockchain_length: u32,
     ) -> anyhow::Result<Option<Vec<u32>>> {
         trace!("Getting global slot for height {}", blockchain_length);
-        Ok(self
-            .database
-            .get_pinned_cf(
-                self.block_global_slot_to_heights_cf(),
-                to_be_bytes(blockchain_length),
-            )?
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok()))
+        Ok(self.get(BLOCK_GLOBAL_SLOT_TO_HEIGHT, blockchain_length))
     }
 
     fn get_block_heights_from_global_slot(
         &self,
-        global_slot: u32,
+        global_slot_since_genesis: u32,
     ) -> anyhow::Result<Option<Vec<u32>>> {
-        trace!("Getting height for global slot {global_slot}");
-        Ok(self
-            .database
-            .get_pinned_cf(
-                self.block_height_to_global_slots_cf(),
-                to_be_bytes(global_slot),
-            )?
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok()))
+        trace!(
+            "Getting height for global slot {}",
+            global_slot_since_genesis
+        );
+        Ok(self.get(BLOCK_HEIGHT_TO_GLOBAL_SLOTS, global_slot_since_genesis))
     }
 
     fn get_current_epoch(&self) -> anyhow::Result<u32> {
@@ -664,19 +585,17 @@ impl BlockStore for IndexerStore {
 
     fn set_block_epoch(&self, state_hash: &BlockHash, epoch: u32) -> anyhow::Result<()> {
         trace!("Setting block epoch {epoch}: {state_hash}");
-        Ok(self.database.put_cf(
-            self.block_epoch_cf(),
-            state_hash.0.as_bytes(),
-            to_be_bytes(epoch),
+        Ok(self.put(
+            BLOCK_EPOCH,
+            state_hash,
+            epoch,
         )?)
     }
 
     fn get_block_epoch(&self, state_hash: &BlockHash) -> anyhow::Result<Option<u32>> {
         trace!("Getting block epoch {state_hash}");
         Ok(self
-            .database
-            .get_cf(self.block_epoch_cf(), state_hash.0.as_bytes())?
-            .map(from_be_bytes))
+            .get(BLOCK_EPOCH, state_hash))
     }
 
     fn set_block_genesis_state_hash(
@@ -685,10 +604,10 @@ impl BlockStore for IndexerStore {
         genesis_state_hash: &BlockHash,
     ) -> anyhow::Result<()> {
         trace!("Setting block genesis state hash {state_hash}: {genesis_state_hash}");
-        Ok(self.database.put_cf(
-            self.block_genesis_state_hash_cf(),
-            state_hash.0.as_bytes(),
-            genesis_state_hash.0.as_bytes(),
+        Ok(self.put(
+            BLOCK_GENESIS_STATE_HASH,
+            state_hash,
+            genesis_state_hash,
         )?)
     }
 
@@ -697,42 +616,44 @@ impl BlockStore for IndexerStore {
         state_hash: &BlockHash,
     ) -> anyhow::Result<Option<BlockHash>> {
         trace!("Getting block genesis state hash {state_hash}");
-        Ok(self
-            .database
-            .get_cf(self.block_genesis_state_hash_cf(), state_hash.0.as_bytes())?
-            .and_then(|bytes| BlockHash::from_bytes(&bytes).ok()))
+        Ok(self.get(BLOCK_GENESIS_STATE_HASH, state_hash))
     }
 
     ///////////////
     // Iterators //
     ///////////////
 
-    fn blocks_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
-        self.database
-            .iterator_cf(self.blocks_height_sort_cf(), mode)
+    fn blocks_height_iterator<'a>(&'a self, mode: IteratorAnchor) -> DBIterator<Vec<u8>, &[u8; 0]> {
+        self.iterator(BLOCKS_HEIGHT_SORT)
     }
 
-    fn blocks_global_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
-        self.database
-            .iterator_cf(self.blocks_global_slot_sort_cf(), mode)
+    fn blocks_global_slot_iterator<'a>(&'a self, mode: IteratorAnchor) -> DBIterator<Vec<u8>, &[u8; 0]> {
+        self.iterator(BLOCKS_GLOBAL_SLOT_SORT)
     }
 
-    fn block_creator_block_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
+    fn block_creator_block_height_iterator<'a>(&'a self, mode: IteratorAnchor) -> DBIterator<Vec<u8>, &[u8; 0]> {
         self.database
             .iterator_cf(self.block_creator_height_sort_cf(), mode)
     }
 
-    fn block_creator_global_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
+    fn block_creator_global_slot_iterator<'a>(&'a self, mode: IteratorAnchor) -> DBIterator<Vec<u8>, &[u8; 0]> {
+        self.iterator(BLOCK_CREA)
         self.database
             .iterator_cf(self.block_creator_slot_sort_cf(), mode)
     }
 
-    fn coinbase_receiver_block_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
+    fn coinbase_receiver_block_height_iterator<'a>(
+        &'a self,
+        mode: IteratorAnchor,
+    ) -> DBIterator<Vec<u8>, &[u8; 0]> {
         self.database
             .iterator_cf(self.block_coinbase_height_sort_cf(), mode)
     }
 
-    fn coinbase_receiver_global_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
+    fn coinbase_receiver_global_slot_iterator<'a>(
+        &'a self,
+        mode: IteratorAnchor,
+    ) -> DBIterator<Vec<u8>, &[u8; 0]> {
         self.database
             .iterator_cf(self.block_coinbase_slot_sort_cf(), mode)
     }
@@ -749,27 +670,15 @@ impl BlockStore for IndexerStore {
 
         // increment pk epoch count
         let acc = self.get_block_production_pk_epoch_count(&creator, Some(epoch))?;
-        self.database.put_cf(
-            self.block_production_pk_epoch_cf(),
-            u32_prefix_key(epoch, &creator.0),
-            to_be_bytes(acc + 1),
-        )?;
+        self.put(BLOCK_PRODUCTION_PK_EPOCH, (epoch, &creator), acc + 1);
 
         // increment pk total count
         let acc = self.get_block_production_pk_total_count(&creator)?;
-        self.database.put_cf(
-            self.block_production_pk_total_cf(),
-            creator.to_bytes(),
-            to_be_bytes(acc + 1),
-        )?;
+        self.put(BLOCK_PRODUCTION_PK_TOTAL, creator, acc + 1);
 
         // increment epoch count
         let acc = self.get_block_production_epoch_count(Some(epoch))?;
-        self.database.put_cf(
-            self.block_production_epoch_cf(),
-            to_be_bytes(epoch),
-            to_be_bytes(acc + 1),
-        )?;
+        self.put(BLOCK_PRODUCTION_EPOCH, epoch, acc + 1);
 
         // increment total count
         let acc = self.get_block_production_total_count()?;
@@ -786,30 +695,18 @@ impl BlockStore for IndexerStore {
     ) -> anyhow::Result<u32> {
         let epoch = epoch.unwrap_or(self.get_current_epoch()?);
         trace!("Getting pk epoch {epoch} block production count {pk}");
-        Ok(self
-            .database
-            .get_cf(
-                self.block_production_pk_epoch_cf(),
-                u32_prefix_key(epoch, &pk.0),
-            )?
-            .map_or(0, from_be_bytes))
+        Ok(self.get(BLOCK_PRODUCTION_PK_EPOCH, (epoch, pk)))
     }
 
     fn get_block_production_pk_total_count(&self, pk: &PublicKey) -> anyhow::Result<u32> {
         trace!("Getting pk total block production count {pk}");
-        Ok(self
-            .database
-            .get_cf(self.block_production_pk_total_cf(), pk.clone().to_bytes())?
-            .map_or(0, from_be_bytes))
+        Ok(self.get(BLOCK_PRODUCTION_PK_TOTAL, pk))
     }
 
     fn get_block_production_epoch_count(&self, epoch: Option<u32>) -> anyhow::Result<u32> {
         let epoch = epoch.unwrap_or(self.get_current_epoch()?);
         trace!("Getting epoch block production count {epoch}");
-        Ok(self
-            .database
-            .get_cf(self.block_production_epoch_cf(), to_be_bytes(epoch))?
-            .map_or(0, from_be_bytes))
+        Ok(self.get(BLOCK_PRODUCTION_EPOCH, epoch))
     }
 
     fn get_block_production_total_count(&self) -> anyhow::Result<u32> {
@@ -871,10 +768,7 @@ impl BlockStore for IndexerStore {
         trace!("Dumping blocks via height to {}", path.display());
         let mut file = File::create(path)?;
 
-        for (key, _) in self
-            .blocks_height_iterator(speedb::IteratorMode::Start)
-            .flatten()
-        {
+        for (key, _) in self.blocks_height_iterator(IteratorAnchor::Start).flatten() {
             let state_hash = block_state_hash_from_key(&key)?;
             let block_height = block_u32_prefix_from_key(&key)?;
             let global_slot = self
@@ -889,7 +783,7 @@ impl BlockStore for IndexerStore {
         Ok(())
     }
 
-    fn blocks_via_height(&self, mode: IteratorMode) -> anyhow::Result<Vec<PrecomputedBlock>> {
+    fn blocks_via_height(&self, mode: IteratorAnchor) -> anyhow::Result<Vec<PrecomputedBlock>> {
         let mut blocks = vec![];
         trace!("Getting blocks via height (mode: {})", display_mode(mode));
         for (key, _) in self.blocks_height_iterator(mode).flatten() {
@@ -905,7 +799,7 @@ impl BlockStore for IndexerStore {
         let mut file = File::create(path)?;
 
         for (key, _) in self
-            .blocks_global_slot_iterator(speedb::IteratorMode::Start)
+            .blocks_global_slot_iterator(IteratorAnchor::Start)
             .flatten()
         {
             let state_hash = block_state_hash_from_key(&key)?;
@@ -922,7 +816,10 @@ impl BlockStore for IndexerStore {
         Ok(())
     }
 
-    fn blocks_via_global_slot(&self, mode: IteratorMode) -> anyhow::Result<Vec<PrecomputedBlock>> {
+    fn blocks_via_global_slot(
+        &self,
+        mode: IteratorAnchor,
+    ) -> anyhow::Result<Vec<PrecomputedBlock>> {
         let mut blocks = vec![];
         trace!(
             "Getting blocks via global slot (mode: {})",
@@ -958,11 +855,11 @@ fn pk_block_sort_key(pk: PublicKey, sort_value: u32, state_hash: BlockHash) -> V
     key
 }
 
-fn display_mode(mode: IteratorMode) -> String {
+fn display_mode(mode: IteratorAnchor) -> String {
     match mode {
-        IteratorMode::End => "End".to_string(),
-        IteratorMode::Start => "Start".to_string(),
-        IteratorMode::From(start, direction) => {
+        IteratorAnchor::End => "End".to_string(),
+        IteratorAnchor::Start => "Start".to_string(),
+        IteratorAnchor::From(start, direction) => {
             format!("{} from {start:?}", display_direction(direction))
         }
     }

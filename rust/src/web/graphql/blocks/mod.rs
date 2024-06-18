@@ -16,7 +16,7 @@ use crate::{
         version_bytes,
     },
     snark_work::{store::SnarkStore, SnarkWorkSummary},
-    store::{block_state_hash_from_key, pk_of_key, to_be_bytes, IndexerStore},
+    store::{block_state_hash_from_key, pk_of_key, to_be_bytes, IndexerStore, IteratorAnchor},
     web::graphql::gen::BlockQueryInput,
 };
 use anyhow::Context;
@@ -123,10 +123,7 @@ impl BlocksQueryRoot {
         }
 
         // else iterate over height-sorted blocks
-        for (key, _) in db
-            .blocks_height_iterator(speedb::IteratorMode::End)
-            .flatten()
-        {
+        for (key, _) in db.blocks_height_iterator(IteratorAnchor::End).flatten() {
             let state_hash = block_state_hash_from_key(&key)?;
             let pcb = db
                 .get_block(&state_hash)?
@@ -175,7 +172,7 @@ impl BlocksQueryRoot {
         #[graphql(default = 100)] limit: usize,
         sort_by: Option<BlockSortByInput>,
     ) -> Result<Vec<Block>> {
-        use speedb::{Direction::*, IteratorMode::*};
+        use crate::store::{Direction::*, IteratorAnchor::*};
         use BlockSortByInput::*;
 
         let db = db(ctx);

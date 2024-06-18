@@ -1,5 +1,7 @@
-use crate::event::IndexerEvent;
-use speedb::{DBIterator, IteratorMode};
+use crate::{
+    event::IndexerEvent,
+    store::{DBIterator, IteratorAnchor},
+};
 
 pub trait EventStore {
     /// Add event to db and return the next sequence number
@@ -17,5 +19,5 @@ pub trait EventStore {
     fn get_event_log(&self) -> anyhow::Result<Vec<IndexerEvent>>;
 
     /// Returns the event log iterator
-    fn event_log_iterator(&self, mode: IteratorMode) -> DBIterator<'_>;
+    fn event_log_iterator(&self, mode: IteratorAnchor) -> DBIterator<u32, IndexerEvent>;
 }

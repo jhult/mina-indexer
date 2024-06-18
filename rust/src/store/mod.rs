@@ -12,7 +12,7 @@ pub mod account_store_impl;
 pub mod block_store_impl;
 pub mod canonicity_store_impl;
 pub mod chain_store_impl;
-pub mod column_families_impl;
+pub mod database;
 pub mod event_store_impl;
 pub mod internal_command_store_impl;
 pub mod ledger_store_impl;
@@ -24,8 +24,11 @@ pub mod version_store_impl;
 use self::fixed_keys::FixedKeys;
 use crate::{block::BlockHash, command::signed::TXN_HASH_LEN, ledger::public_key::PublicKey};
 use anyhow::anyhow;
+use redb::{
+    AccessGuard, Database, Key, Range, ReadOnlyTable, ReadableMultimapTable, ReadableTable,
+    TableDefinition, Value,
+};
 use serde::{Deserialize, Serialize};
-use speedb::{ColumnFamilyDescriptor, DBCompressionType, DB};
 use std::path::{Path, PathBuf};
 use version::{IndexerStoreVersion, VersionStore};
 
@@ -61,15 +64,79 @@ impl IndexerStore {
     }
 
     pub fn create_snapshot(&self, path: &Path) -> anyhow::Result<()> {
-        use speedb::checkpoint::Checkpoint;
+        use redb::Savepoint;
 
-        let checkpoint = Checkpoint::new(&self.database)?;
-        Checkpoint::create_checkpoint(&checkpoint, path)
+        let checkpoint = Savepoint::new(&self.database)?;
+        Savepoint::new(&checkpoint, path)
             .map_err(|e| anyhow!("Error creating db checkpoint: {}", e))
     }
 
     pub fn db_path(&self) -> &Path {
         &self.db_path
+    }
+
+    pub(crate) fn get<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+        key: K,
+    ) -> Option<V> {
+        self.readable(definition).get(key)?.map(|v| v.value())
+    }
+
+    fn readable<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+    ) -> ReadOnlyTable<K, V> {
+        self.database.begin_read()?.open_table(definition)?
+    }
+
+    fn iterator<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+    ) -> DBIterator<K, V> {
+        self.readable(definition).iter()
+    }
+
+    /// Insert mapping of the given key to the given value
+    ///
+    /// If key is already present it is replaced
+    ///
+    /// Returns the old value, if the key was present in the table, otherwise None is returned
+    pub(crate) fn put<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+        key: K,
+        value: V,
+    ) -> redb::Result<Option<AccessGuard<V>>> {
+        let txn = &self.database.begin_write()?;
+        let return_val = txn.open_table(definition)?.insert(key, value);
+        txn.commit();
+        return_val
+    }
+
+    pub(crate) fn put_sort<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+        key: K,
+    ) -> redb::Result<Option<AccessGuard<V>>> {
+        let txn = &self.database.begin_write()?;
+        let return_val = txn.open_table(definition)?.insert(key, b"");
+        txn.commit();
+        return_val
+    }
+
+    /// Removes the given key
+    ///
+    /// Returns the old value, if the key was present in the table
+    pub(crate) fn delete<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+        key: K,
+    ) -> redb::Result<Option<AccessGuard<V>>> {
+        let txn = &self.database.begin_write()?;
+        let return_val = txn.open_table(definition)?.remove(key);
+        txn.commit();
+        return_val
     }
 }
 
@@ -122,10 +189,8 @@ pub fn from_be_bytes(bytes: Vec<u8>) -> u32 {
 /// The first 4 bytes are `prefix` in big endian
 /// - `prefix`: global slot, epoch number, etc
 /// - `suffix`: txn hash, public key, etc
-fn u32_prefix_key(prefix: u32, suffix: &str) -> Vec<u8> {
-    let mut bytes = to_be_bytes(prefix);
-    bytes.append(&mut suffix.as_bytes().to_vec());
-    bytes
+fn u32_prefix_key(prefix: u32, suffix: &str) -> (u32, &str) {
+    (prefix, suffix)
 }
 
 /// The first 8 bytes are `prefix` in big endian
@@ -195,14 +260,23 @@ pub fn block_txn_index_key(state_hash: &BlockHash, index: u32) -> Vec<u8> {
     key
 }
 
-pub fn txn_block_key(txn_hash: &str, state_hash: BlockHash) -> Vec<u8> {
-    let mut bytes = txn_hash.as_bytes().to_vec();
-    bytes.append(&mut state_hash.clone().to_bytes());
-    bytes
-}
-
 impl FixedKeys for IndexerStore {}
 
 impl IndexerStore {
     // TODO: expose redb::TableStats
 }
+
+#[derive(Clone)]
+pub enum IteratorAnchor<'a> {
+    Start,
+    End,
+    From(&'a [u8], Direction),
+}
+
+#[derive(Copy, Clone)]
+pub enum Direction {
+    Forward,
+    Reverse,
+}
+
+pub type DBIterator<'a, K, V> = redb::Result<Range<'a, K, V>>;

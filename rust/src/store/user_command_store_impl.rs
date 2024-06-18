@@ -1,4 +1,4 @@
-use super::{column_families::ColumnFamilyHelpers, fixed_keys::FixedKeys};
+use super::{fixed_keys::FixedKeys, DBIterator, IteratorAnchor};
 use crate::{
     block::{precomputed::PrecomputedBlock, store::BlockStore, BlockComparison, BlockHash},
     command::{
@@ -8,12 +8,16 @@ use crate::{
     },
     ledger::public_key::PublicKey,
     store::{
-        from_be_bytes, pk_txn_sort_key, to_be_bytes, txn_block_key, txn_sort_key, u32_prefix_key,
-        user_command_db_key_pk, username::UsernameStore, IndexerStore,
+        database::{
+            BLOCK_USER_COMMAND_COUNTS, COMMANDS_TXN_HASH_TO_GLOBAL_SLOT_MAINNET, USER_COMMANDS,
+            USER_COMMANDS_EPOCH, USER_COMMANDS_PK_EPOCH, USER_COMMANDS_PK_TOTAL,
+        },
+        from_be_bytes, pk_txn_sort_key, to_be_bytes, txn_sort_key, user_command_db_key_pk,
+        username::UsernameStore,
+        IndexerStore,
     },
 };
 use log::{trace, warn};
-use speedb::{DBIterator, IteratorMode};
 
 impl UserCommandStore for IndexerStore {
     fn add_user_commands(&self, block: &PrecomputedBlock) -> anyhow::Result<()> {
@@ -35,17 +39,17 @@ impl UserCommandStore for IndexerStore {
             trace!("Adding user command {txn_hash} block {}", block.summary());
 
             // add signed command
-            self.database.put_cf(
-                self.user_commands_cf(),
-                txn_block_key(&txn_hash, state_hash.clone()),
-                serde_json::to_vec(&SignedCommandWithData::from(
+            self.put(
+                USER_COMMANDS,
+                (&txn_hash, state_hash.clone()),
+                &SignedCommandWithData::from(
                     command,
                     &block.state_hash().0,
                     block.blockchain_length(),
                     block.timestamp(),
                     block.global_slot_since_genesis(),
-                ))?,
-            )?;
+                ),
+            );
 
             // add state hash index
             self.set_user_command_state_hash(state_hash.clone(), &txn_hash)?;
@@ -73,11 +77,11 @@ impl UserCommandStore for IndexerStore {
 
             // add: `txn_hash -> global_slot`
             // so we can reconstruct the key
-            self.database.put_cf(
-                self.user_commands_txn_hash_to_global_slot_cf(),
-                txn_hash.as_bytes(),
-                to_be_bytes(block.global_slot_since_genesis()),
-            )?;
+            self.put(
+                COMMANDS_TXN_HASH_TO_GLOBAL_SLOT_MAINNET,
+                &txn_hash,
+                block.global_slot_since_genesis(),
+            );
 
             // add sender index
             self.database.put_cf(
@@ -186,13 +190,7 @@ impl UserCommandStore for IndexerStore {
         state_hash: &BlockHash,
     ) -> anyhow::Result<Option<SignedCommandWithData>> {
         trace!("Getting user command {txn_hash} in block {state_hash}");
-        Ok(self
-            .database
-            .get_pinned_cf(
-                self.user_commands_cf(),
-                txn_block_key(txn_hash, state_hash.clone()),
-            )?
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok()))
+        Ok(self.get(USER_COMMANDS, (txn_hash, state_hash.clone())))
     }
 
     fn get_user_command_state_hashes(
@@ -358,33 +356,24 @@ impl UserCommandStore for IndexerStore {
     // Iterators //
     ///////////////
 
-    fn user_commands_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
+    fn user_commands_slot_iterator<'a>(&'a self, mode: IteratorAnchor) -> DBIterator<K, V> {
         self.database
             .iterator_cf(self.user_commands_slot_sort_cf(), mode)
     }
 
-    fn user_commands_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
+    fn user_commands_height_iterator<'a>(&'a self, mode: IteratorAnchor) -> DBIterator<K, V> {
         self.database
             .iterator_cf(self.user_commands_height_sort_cf(), mode)
     }
 
-    fn txn_from_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
+    fn txn_from_height_iterator<'a>(&'a self, mode: IteratorAnchor) -> DBIterator<K, V> {
         self.database
             .iterator_cf(self.txn_from_height_sort_cf(), mode)
     }
 
-    fn txn_from_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
-        self.database
-            .iterator_cf(self.txn_from_slot_sort_cf(), mode)
-    }
-
-    fn txn_to_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
+    fn txn_to_height_iterator<'a>(&'a self, mode: IteratorAnchor) -> DBIterator<K, V> {
         self.database
             .iterator_cf(self.txn_to_height_sort_cf(), mode)
-    }
-
-    fn txn_to_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
-        self.database.iterator_cf(self.txn_to_slot_sort_cf(), mode)
     }
 
     /////////////////////////
@@ -402,20 +391,13 @@ impl UserCommandStore for IndexerStore {
     fn get_user_commands_epoch_count(&self, epoch: Option<u32>) -> anyhow::Result<u32> {
         let epoch = epoch.unwrap_or(self.get_current_epoch()?);
         trace!("Getting user command epoch {epoch}");
-        Ok(self
-            .database
-            .get_pinned_cf(self.user_commands_epoch_cf(), to_be_bytes(epoch))?
-            .map_or(0, |bytes| from_be_bytes(bytes.to_vec())))
+        Ok(self.get(USER_COMMANDS_EPOCH, epoch))
     }
 
     fn increment_user_commands_epoch_count(&self, epoch: u32) -> anyhow::Result<()> {
         trace!("Incrementing user command epoch {epoch}");
         let old = self.get_user_commands_epoch_count(Some(epoch))?;
-        Ok(self.database.put_cf(
-            self.user_commands_epoch_cf(),
-            to_be_bytes(epoch),
-            to_be_bytes(old + 1),
-        )?)
+        Ok(self.put(USER_COMMANDS_EPOCH, epoch, old + 1))
     }
 
     fn get_user_commands_total_count(&self) -> anyhow::Result<u32> {
@@ -442,13 +424,7 @@ impl UserCommandStore for IndexerStore {
     ) -> anyhow::Result<u32> {
         let epoch = epoch.unwrap_or(self.get_current_epoch()?);
         trace!("Getting user command epoch {epoch} num {pk}");
-        Ok(self
-            .database
-            .get_pinned_cf(
-                self.user_commands_pk_epoch_cf(),
-                u32_prefix_key(epoch, &pk.0),
-            )?
-            .map_or(0, |bytes| from_be_bytes(bytes.to_vec())))
+        Ok(self.get(USER_COMMANDS_PK_EPOCH, (epoch, &pk)))
     }
 
     fn increment_user_commands_pk_epoch_count(
@@ -459,30 +435,19 @@ impl UserCommandStore for IndexerStore {
         trace!("Incrementing pk epoch {epoch} user commands count {pk}");
 
         let old = self.get_user_commands_pk_epoch_count(pk, Some(epoch))?;
-        Ok(self.database.put_cf(
-            self.user_commands_pk_epoch_cf(),
-            u32_prefix_key(epoch, &pk.0),
-            to_be_bytes(old + 1),
-        )?)
+        Ok(self.put(USER_COMMANDS_PK_EPOCH, (epoch, &pk), old + 1))
     }
 
     fn get_user_commands_pk_total_count(&self, pk: &PublicKey) -> anyhow::Result<u32> {
         trace!("Getting pk total user commands count {pk}");
-        Ok(self
-            .database
-            .get_pinned_cf(self.user_commands_pk_total_cf(), pk.0.as_bytes())?
-            .map_or(0, |bytes| from_be_bytes(bytes.to_vec())))
+        Ok(self.get(USER_COMMANDS_PK_TOTAL, pk))
     }
 
     fn increment_user_commands_pk_total_count(&self, pk: &PublicKey) -> anyhow::Result<()> {
         trace!("Incrementing user command pk total num {pk}");
 
         let old = self.get_user_commands_pk_total_count(pk)?;
-        Ok(self.database.put_cf(
-            self.user_commands_pk_total_cf(),
-            pk.0.as_bytes(),
-            to_be_bytes(old + 1),
-        )?)
+        Ok(self.put(USER_COMMANDS_PK_TOTAL, pk, old + 1))
     }
 
     fn set_block_user_commands_count(
@@ -491,19 +456,12 @@ impl UserCommandStore for IndexerStore {
         count: u32,
     ) -> anyhow::Result<()> {
         trace!("Setting block user command count {state_hash} -> {count}");
-        Ok(self.database.put_cf(
-            self.block_user_command_counts_cf(),
-            state_hash.0.as_bytes(),
-            to_be_bytes(count),
-        )?)
+        Ok(self.put(BLOCK_USER_COMMAND_COUNTS, state_hash, count)?)
     }
 
     fn get_block_user_commands_count(&self, state_hash: &BlockHash) -> anyhow::Result<Option<u32>> {
         trace!("Getting block user command count {state_hash}");
-        Ok(self
-            .database
-            .get_pinned_cf(self.block_user_command_counts_cf(), state_hash.0.as_bytes())?
-            .map(|bytes| from_be_bytes(bytes.to_vec())))
+        Ok(self.get(BLOCK_USER_COMMAND_COUNTS, state_hash))
     }
 
     fn increment_user_commands_counts(

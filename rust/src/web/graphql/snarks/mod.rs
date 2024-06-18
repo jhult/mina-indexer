@@ -3,7 +3,10 @@ use crate::{
     constants::*,
     ledger::public_key::PublicKey,
     snark_work::{store::SnarkStore, SnarkWorkSummary, SnarkWorkSummaryWithStateHash},
-    store::{block_state_hash_from_key, from_be_bytes, to_be_bytes, IndexerStore},
+    store::{
+        block_state_hash_from_key, from_be_bytes, to_be_bytes, Direction, IndexerStore,
+        IteratorAnchor,
+    },
     web::graphql::{db, gen::BlockQueryInput, get_block_canonicity},
 };
 use async_graphql::{ComplexObject, Context, Enum, InputObject, Object, Result, SimpleObject};
@@ -156,14 +159,14 @@ impl SnarkQueryRoot {
             let mut start = prover.as_bytes().to_vec();
             let mode = match sort_by {
                 SnarkSortByInput::BlockHeightAsc => {
-                    speedb::IteratorMode::From(&start, speedb::Direction::Forward)
+                    IteratorAnchor::From(&start, Direction::Forward)
                 }
                 SnarkSortByInput::BlockHeightDesc => {
                     let mut pk_prefix = PublicKey::PREFIX.as_bytes().to_vec();
                     *pk_prefix.last_mut().unwrap_or(&mut 0) += 1;
                     start.append(&mut to_be_bytes(u32::MAX));
                     start.append(&mut pk_prefix);
-                    speedb::IteratorMode::From(&start, speedb::Direction::Reverse)
+                    IteratorAnchor::From(&start, Direction::Reverse)
                 }
             };
 
@@ -276,8 +279,8 @@ impl SnarkQueryRoot {
 
         // general query
         let mode = match sort_by {
-            SnarkSortByInput::BlockHeightAsc => speedb::IteratorMode::Start,
-            SnarkSortByInput::BlockHeightDesc => speedb::IteratorMode::End,
+            SnarkSortByInput::BlockHeightAsc => IteratorAnchor::Start,
+            SnarkSortByInput::BlockHeightDesc => IteratorAnchor::End,
         };
 
         'outer: for (key, _) in db.blocks_height_iterator(mode).flatten() {

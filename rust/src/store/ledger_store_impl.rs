@@ -1,4 +1,7 @@
-use super::column_families::ColumnFamilyHelpers;
+use super::{
+    database::{LEDGERS, STAKING_LEDGER_BALANCE},
+    DBIterator, IteratorAnchor,
+};
 use crate::{
     block::{store::BlockStore, BlockHash},
     canonicity::store::CanonicityStore,
@@ -7,11 +10,15 @@ use crate::{
     ledger::{
         diff::LedgerDiff,
         public_key::PublicKey,
-        staking::{AggregatedEpochStakeDelegations, StakingLedger},
+        staking::{AggregatedEpochStakeDelegations, StakingAccount, StakingLedger},
         store::LedgerStore,
         Ledger, LedgerHash,
     },
-    store::{account::AccountStore, from_be_bytes, to_be_bytes, IndexerStore},
+    store::{
+        account::AccountStore,
+        database::{STAKING_LEDGER_HASH_TO_EPOCH, STAKING_LEDGER_STAKE},
+        from_be_bytes, to_be_bytes, IndexerStore,
+    },
 };
 use log::{error, trace};
 
@@ -22,11 +29,9 @@ impl LedgerStore for IndexerStore {
 
     fn add_ledger(&self, ledger_hash: &LedgerHash, state_hash: &BlockHash) -> anyhow::Result<()> {
         trace!("Adding staged ledger\nstate_hash: {state_hash}\nledger_hash: {ledger_hash}");
-        self.database.put_cf(
-            self.ledgers_cf(),
-            ledger_hash.0.as_bytes(),
-            state_hash.0.as_bytes(),
-        )?;
+        let key = ledger_hash;
+        let value = state_hash;
+        self.put(LEDGERS, key, value);
         Ok(())
     }
 
@@ -340,10 +345,10 @@ impl LedgerStore for IndexerStore {
         // add per epoch, balance-sorted & delegation-sorted
         for (pk, account) in staking_ledger.staking_ledger.iter() {
             // balance-sort
-            self.database.put_cf(
-                self.staking_ledger_balance_cf(),
+            self.put(
+                STAKING_LEDGER_BALANCE,
                 staking_ledger_sort_key(epoch, account.balance, &pk.0),
-                serde_json::to_vec(account)?,
+                account,
             )?;
 
             // stake-sort
@@ -354,10 +359,10 @@ impl LedgerStore for IndexerStore {
                 .unwrap_or_default()
                 .total_delegated
                 .unwrap_or_default();
-            self.database.put_cf(
-                self.staking_ledger_stake_cf(),
+            self.put(
+                STAKING_LEDGER_STAKE,
                 staking_ledger_sort_key(epoch, stake, &pk.0),
-                serde_json::to_vec(account)?,
+                account?,
             )?;
         }
 
@@ -403,13 +408,7 @@ impl LedgerStore for IndexerStore {
 
     fn get_epoch(&self, ledger_hash: &LedgerHash) -> anyhow::Result<Option<u32>> {
         trace!("Getting epoch for ledger {ledger_hash}");
-        Ok(self
-            .database
-            .get_cf(
-                self.staking_ledger_hash_to_epoch_cf(),
-                ledger_hash.0.as_bytes(),
-            )?
-            .map(from_be_bytes))
+        Ok(self.get(STAKING_LEDGER_HASH_TO_EPOCH, ledger_hash))
     }
 
     fn get_ledger_hash(&self, epoch: u32) -> anyhow::Result<Option<LedgerHash>> {
@@ -431,11 +430,7 @@ impl LedgerStore for IndexerStore {
             to_be_bytes(epoch),
             ledger_hash.0.as_bytes(),
         )?;
-        Ok(self.database.put_cf(
-            self.staking_ledger_hash_to_epoch_cf(),
-            ledger_hash.0.as_bytes(),
-            to_be_bytes(epoch),
-        )?)
+        Ok(self.put(STAKING_LEDGER_HASH_TO_EPOCH, ledger_hash, epoch)?)
     }
 
     fn set_ledger_hash_genesis_pair(
@@ -471,15 +466,16 @@ impl LedgerStore for IndexerStore {
 
     fn staking_ledger_balance_iterator(
         &self,
-        mode: speedb::IteratorMode,
-    ) -> speedb::DBIterator<'_> {
-        self.database
-            .iterator_cf(self.staking_ledger_balance_cf(), mode)
+        mode: IteratorAnchor,
+    ) -> DBIterator<Vec<u8>, StakingAccount> {
+        self.iterator(STAKING_LEDGER_BALANCE)
     }
 
-    fn staking_ledger_stake_iterator(&self, mode: speedb::IteratorMode) -> speedb::DBIterator<'_> {
-        self.database
-            .iterator_cf(self.staking_ledger_stake_cf(), mode)
+    fn staking_ledger_stake_iterator(
+        &self,
+        mode: IteratorAnchor,
+    ) -> DBIterator<Vec<u8>, StakingAccount> {
+        self.iterator(STAKING_LEDGER_STAKE)
     }
 }
 

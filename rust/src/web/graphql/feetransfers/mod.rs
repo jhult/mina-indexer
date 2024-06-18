@@ -12,7 +12,7 @@ use crate::{
     },
     constants::*,
     snark_work::store::SnarkStore,
-    store::IndexerStore,
+    store::{IndexerStore, IteratorAnchor},
     web::graphql::db,
 };
 use async_graphql::{Context, Enum, InputObject, Object, Result, SimpleObject};
@@ -296,9 +296,9 @@ fn get_fee_transfers(
 ) -> Result<Vec<FeetransferWithMeta>> {
     let mut fee_transfers = Vec::new();
     let mode = if let Some(FeetransferSortByInput::BlockHeightAsc) = sort_by {
-        speedb::IteratorMode::Start
+        IteratorAnchor::Start
     } else {
-        speedb::IteratorMode::End
+        IteratorAnchor::End
     };
 
     for (_, value) in db.internal_commands_global_slot_interator(mode).flatten() {

@@ -1,7 +1,7 @@
-use super::{column_families::ColumnFamilyHelpers, fixed_keys::FixedKeys};
+use super::{database::EVENTS, fixed_keys::FixedKeys, DBIterator, IteratorAnchor};
 use crate::{
     event::{store::EventStore, IndexerEvent},
-    store::IndexerStore,
+    store::{database::INDEXED_U32, IndexerStore},
 };
 use log::trace;
 
@@ -16,25 +16,22 @@ impl EventStore for IndexerStore {
 
         // add event to db
         let key = seq_num.to_be_bytes();
-        let value = serde_json::to_vec(&event)?;
-        self.database.put_cf(self.events_cf(), key, value)?;
+        let value = event;
+        self.put(EVENTS, key, event);
 
         // increment event sequence number
         let next_seq_num = seq_num + 1;
-        let value = serde_json::to_vec(&next_seq_num)?;
         self.database
-            .put_cf(self.events_cf(), Self::NEXT_EVENT_SEQ_NUM_KEY, value)?;
+            .write(INDEXED_U32, Self::NEXT_EVENT_SEQ_NUM_KEY, next_seq_num)?;
 
         // return next event sequence number
         Ok(next_seq_num)
     }
 
     fn get_event(&self, seq_num: u32) -> anyhow::Result<Option<IndexerEvent>> {
-        let key = seq_num.to_be_bytes();
-        let event = self
-            .database
-            .get_pinned_cf(self.events_cf(), key)?
-            .map(|bytes| serde_json::from_slice(&bytes).unwrap());
+        let key = seq_num;
+
+        let event = self.get(EVENTS, key);
 
         trace!("Getting event {seq_num}: {:?}", event.clone().unwrap());
         Ok(event)
@@ -68,7 +65,7 @@ impl EventStore for IndexerStore {
 
     /// Key: sequence number (4 BE bytes)
     /// Value: event (serialized with [serde_json::to_vec])
-    fn event_log_iterator(&self, mode: speedb::IteratorMode) -> speedb::DBIterator<'_> {
-        self.database.iterator_cf(self.events_cf(), mode)
+    fn event_log_iterator(&self, mode: IteratorAnchor) -> DBIterator<u32, IndexerEvent> {
+        self.database.iterator(EVENTS)
     }
 }
