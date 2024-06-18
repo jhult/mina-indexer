@@ -4,12 +4,11 @@ use crate::{
     command::{internal::store::InternalCommandStore, store::UserCommandStore},
     ledger::{account, public_key::PublicKey, store::LedgerStore},
     snark_work::store::SnarkStore,
-    store::{account::AccountStore, username::UsernameStore},
+    store::{account::AccountStore, username::UsernameStore, IteratorAnchor},
     web::graphql::Timing,
 };
 use async_graphql::{Context, Enum, InputObject, Object, Result, SimpleObject};
 use log::warn;
-use speedb::IteratorMode;
 
 #[derive(SimpleObject)]
 pub struct Account {
@@ -138,12 +137,12 @@ impl AccountQueryRoot {
 
         // default query handler use balance-sorted accounts
         let mut accounts = Vec::new();
-        let mode = match sort_by {
-            Some(AccountSortByInput::BalanceAsc) => IteratorMode::Start,
-            Some(AccountSortByInput::BalanceDesc) | None => IteratorMode::End,
+        let anchor = match sort_by {
+            Some(AccountSortByInput::BalanceAsc) => IteratorAnchor::Start,
+            Some(AccountSortByInput::BalanceDesc) | None => IteratorAnchor::End,
         };
 
-        for (key, _) in db.account_balance_iterator(mode).flatten() {
+        for (key, _) in db.account_balance_iterator(anchor).flatten() {
             let pk = PublicKey::from_bytes(&key[8..])?;
             let account = match best_ledger.accounts.get(&pk) {
                 Some(account) => account,

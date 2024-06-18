@@ -1,10 +1,13 @@
-use super::{column_families::ColumnFamilyHelpers, fixed_keys::FixedKeys};
+use super::{
+    database::{CANONICITY_LENGTH, CANONICITY_SLOT, STATE_HASHES},
+    fixed_keys::FixedKeys,
+};
 use crate::{
     block::{store::BlockStore, BlockHash},
     canonicity::{store::CanonicityStore, Canonicity, CanonicityDiff, CanonicityUpdate},
     event::{db::*, store::EventStore, IndexerEvent},
     snark_work::store::SnarkStore,
-    store::{to_be_bytes, DBUpdate, IndexerStore},
+    store::{DBUpdate, IndexerStore},
 };
 use anyhow::Context;
 use log::trace;
@@ -25,18 +28,11 @@ impl CanonicityStore for IndexerStore {
         }
 
         // height -> state hash
-        self.database.put_cf(
-            self.canonicity_length_cf(),
-            to_be_bytes(height),
-            state_hash.0.as_bytes(),
-        )?;
+        self.put(CANONICITY_LENGTH, height, state_hash);
 
         // slot -> state hash
-        self.database.put_cf(
-            self.canonicity_slot_cf(),
-            to_be_bytes(global_slot),
-            state_hash.0.as_bytes(),
-        )?;
+        self.database
+            .write(CANONICITY_SLOT, global_slot, state_hash);
 
         // update top snarkers based on the incoming canonical block
         if let Some(completed_works) = self.get_snark_work_in_block(state_hash)? {
@@ -55,16 +51,18 @@ impl CanonicityStore for IndexerStore {
                 // if not
                 // add genesis state hash
                 genesis_state_hashes.push(genesis_state_hash.clone());
-                self.database.put(
+                self.put(
+                    STATE_HASHES,
                     Self::KNOWN_GENESIS_STATE_HASHES_KEY,
-                    serde_json::to_vec(&genesis_state_hashes)?,
+                    genesis_state_hashes,
                 )?;
 
                 // add genesis prev state hash
                 genesis_prev_state_hashes.push(genesis_prev_state_hash.clone());
-                self.database.put(
+                self.put(
+                    STATE_HASHES,
                     Self::KNOWN_GENESIS_PREV_STATE_HASHES_KEY,
-                    serde_json::to_vec(&genesis_prev_state_hashes)?,
+                    &genesis_prev_state_hashes?,
                 )?;
             }
         }
@@ -81,38 +79,22 @@ impl CanonicityStore for IndexerStore {
 
     fn get_known_genesis_state_hashes(&self) -> anyhow::Result<Vec<BlockHash>> {
         trace!("Getting known genesis state hashes");
-        Ok(self
-            .database
-            .get_pinned(Self::KNOWN_GENESIS_STATE_HASHES_KEY)?
-            .map_or(vec![], |bytes| {
-                serde_json::from_slice(&bytes).expect("known genesis state hashes")
-            }))
+        Ok(self.get(STATE_HASHES, Self::KNOWN_GENESIS_STATE_HASHES_KEY))
     }
 
     fn get_known_genesis_prev_state_hashes(&self) -> anyhow::Result<Vec<BlockHash>> {
         trace!("Getting known genesis prev state hashes");
-        Ok(self
-            .database
-            .get_pinned(Self::KNOWN_GENESIS_PREV_STATE_HASHES_KEY)?
-            .map_or(vec![], |bytes| {
-                serde_json::from_slice(&bytes).expect("known genesis prev state hashes")
-            }))
+        Ok(self.get(STATE_HASHES, Self::KNOWN_GENESIS_PREV_STATE_HASHES_KEY))
     }
 
     fn get_canonical_hash_at_height(&self, height: u32) -> anyhow::Result<Option<BlockHash>> {
         trace!("Getting canonical state hash at height {height}");
-        Ok(self
-            .database
-            .get_pinned_cf(&self.canonicity_length_cf(), to_be_bytes(height))?
-            .and_then(|bytes| BlockHash::from_bytes(&bytes).ok()))
+        Ok(self.get(CANONICITY_LENGTH, height))
     }
 
     fn get_canonical_hash_at_slot(&self, global_slot: u32) -> anyhow::Result<Option<BlockHash>> {
         trace!("Getting canonical state hash at slot {global_slot}");
-        Ok(self
-            .database
-            .get_pinned_cf(&self.canonicity_slot_cf(), to_be_bytes(global_slot))?
-            .and_then(|bytes| BlockHash::from_bytes(&bytes).ok()))
+        Ok(self.get(CANONICITY_SLOT, global_slot))
     }
 
     fn get_block_canonicity(&self, state_hash: &BlockHash) -> anyhow::Result<Option<Canonicity>> {
@@ -200,27 +182,15 @@ impl CanonicityStore for IndexerStore {
         // unapply canonicities
         for unapply in updates.unapply.iter() {
             // remove from canonicity sets
-            self.database.delete_cf(
-                self.canonicity_length_cf(),
-                to_be_bytes(unapply.blockchain_length),
-            )?;
-            self.database
-                .delete_cf(self.canonicity_slot_cf(), to_be_bytes(unapply.global_slot))?;
+            self.delete(CANONICITY_LENGTH, unapply.blockchain_length)?;
+            self.delete(CANONICITY_SLOT, unapply.global_slot)?;
         }
 
         // apply canonicities
         for apply in updates.apply.iter() {
             // remove from canonicity sets
-            self.database.put_cf(
-                self.canonicity_length_cf(),
-                to_be_bytes(apply.blockchain_length),
-                apply.state_hash.0.as_bytes(),
-            )?;
-            self.database.put_cf(
-                self.canonicity_slot_cf(),
-                to_be_bytes(apply.global_slot),
-                apply.state_hash.0.as_bytes(),
-            )?;
+            self.put(CANONICITY_LENGTH, apply.blockchain_length, apply.state_hash)?;
+            self.put(CANONICITY_SLOT, apply.global_slot, apply.state_hash)?;
         }
         Ok(())
     }

@@ -15,13 +15,12 @@ use crate::{
     },
     store::{
         pk_of_key, pk_txn_sort_key_prefix, state_hash_pk_txn_sort_key, to_be_bytes,
-        txn_hash_of_key, IndexerStore,
+        txn_hash_of_key, Direction, IndexerStore, IteratorAnchor,
     },
     web::graphql::{gen::TransactionQueryInput, DateTime},
 };
 use anyhow::Context as aContext;
 use async_graphql::{Context, Enum, Object, Result, SimpleObject};
-use speedb::{Direction, IteratorMode};
 use std::sync::Arc;
 
 #[derive(Default)]
@@ -249,16 +248,16 @@ impl TransactionsQueryRoot {
 
         let iter = match sort_by {
             TransactionSortByInput::BlockHeightAsc => {
-                db.user_commands_height_iterator(IteratorMode::From(&[0], Direction::Forward))
+                db.user_commands_height_iterator(IteratorAnchor::From(&[0], Direction::Forward))
             }
             TransactionSortByInput::BlockHeightDesc => db.user_commands_height_iterator(
-                IteratorMode::From(&to_be_bytes(u32::MAX), Direction::Reverse),
+                IteratorAnchor::From(&to_be_bytes(u32::MAX), Direction::Reverse),
             ),
             TransactionSortByInput::DateTimeAsc => {
-                db.user_commands_slot_iterator(IteratorMode::From(&[0], Direction::Forward))
+                db.user_commands_slot_iterator(IteratorAnchor::From(&[0], Direction::Forward))
             }
             TransactionSortByInput::DateTimeDesc => db.user_commands_slot_iterator(
-                IteratorMode::From(&to_be_bytes(u32::MAX), Direction::Reverse),
+                IteratorAnchor::From(&to_be_bytes(u32::MAX), Direction::Reverse),
             ),
         };
         for (key, _) in iter.flatten() {

@@ -11,13 +11,12 @@ use crate::{
     store::{
         ledger_store_impl::{staking_ledger_sort_key, staking_ledger_sort_key_epoch},
         username::UsernameStore,
-        IndexerStore,
+        Direction, IndexerStore, IteratorAnchor,
     },
     web::graphql::Timing,
 };
 use async_graphql::{ComplexObject, Context, Enum, InputObject, Object, Result, SimpleObject};
 use rust_decimal::{prelude::ToPrimitive, Decimal};
-use speedb::{Direction, IteratorMode};
 use std::sync::Arc;
 
 #[derive(InputObject)]
@@ -108,31 +107,30 @@ impl StakeQueryRoot {
         let mut accounts = Vec::new();
         let iter = match sort_by {
             Some(StakeSortByInput::StakeDesc) | None => {
-                db.staking_ledger_stake_iterator(IteratorMode::From(
+                db.staking_ledger_stake_iterator(IteratorAnchor::From(
                     &staking_ledger_sort_key(epoch, u64::MAX, ""),
                     Direction::Reverse,
                 ))
             }
             Some(StakeSortByInput::StakeAsc) => db.staking_ledger_stake_iterator(
-                IteratorMode::From(&staking_ledger_sort_key(epoch, 0, ""), Direction::Forward),
+                IteratorAnchor::From(&staking_ledger_sort_key(epoch, 0, ""), Direction::Forward),
             ),
             Some(StakeSortByInput::BalanceDesc) => {
-                db.staking_ledger_balance_iterator(IteratorMode::From(
+                db.staking_ledger_balance_iterator(IteratorAnchor::From(
                     &staking_ledger_sort_key(epoch, u64::MAX, ""),
                     Direction::Reverse,
                 ))
             }
             Some(StakeSortByInput::BalanceAsc) => db.staking_ledger_balance_iterator(
-                IteratorMode::From(&staking_ledger_sort_key(epoch, 0, ""), Direction::Forward),
+                IteratorAnchor::From(&staking_ledger_sort_key(epoch, 0, ""), Direction::Forward),
             ),
         };
 
-        for (key, value) in iter.flatten() {
+        for (key, account) in iter.flatten() {
             let key_epoch = staking_ledger_sort_key_epoch(&key);
             if key_epoch != epoch {
                 break;
             }
-            let account: StakingAccount = serde_json::from_slice(&value)?;
             if StakeQueryInput::matches_staking_account(
                 query.as_ref(),
                 &account,

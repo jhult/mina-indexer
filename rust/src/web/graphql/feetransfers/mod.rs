@@ -12,7 +12,7 @@ use crate::{
     },
     constants::*,
     snark_work::store::SnarkStore,
-    store::IndexerStore,
+    store::{IndexerStore, IteratorAnchor},
     web::graphql::db,
 };
 use anyhow::Context as aContext;
@@ -296,13 +296,13 @@ fn get_fee_transfers(
     total_num_internal_commands: u32,
 ) -> Result<Vec<FeetransferWithMeta>> {
     let mut fee_transfers = Vec::new();
-    let mode = if let Some(FeetransferSortByInput::BlockHeightAsc) = sort_by {
-        speedb::IteratorMode::Start
+    let anchor = if let Some(FeetransferSortByInput::BlockHeightAsc) = sort_by {
+        IteratorAnchor::Start
     } else {
-        speedb::IteratorMode::End
+        IteratorAnchor::End
     };
 
-    for (_, value) in db.internal_commands_global_slot_interator(mode).flatten() {
+    for (_, value) in db.internal_commands_global_slot_interator(anchor).flatten() {
         let internal_command = serde_json::from_slice::<InternalCommandWithData>(&value)?;
         let ft = Feetransfer::from((
             internal_command,

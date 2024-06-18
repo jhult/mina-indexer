@@ -3,10 +3,9 @@ use crate::{
     block::{precomputed::PrecomputedBlock, BlockHash},
     command::{signed::SignedCommandWithData, UserCommandWithStatus},
     ledger::public_key::PublicKey,
-    store::from_be_bytes,
+    store::{from_be_bytes, DBIterator, IteratorAnchor},
 };
 use anyhow::anyhow;
-use speedb::{DBIterator, IteratorMode};
 
 /// Store for user commands
 pub trait UserCommandStore {
@@ -77,22 +76,16 @@ pub trait UserCommandStore {
     ///////////////
 
     /// Iterator for user commands via global slot
-    fn user_commands_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn user_commands_slot_iterator<'a>(&'a self, anchor: IteratorAnchor) -> DBIterator<K, V>;
 
     /// Iterator for user commands via blockchain length
-    fn user_commands_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn user_commands_height_iterator<'a>(&'a self, anchor: IteratorAnchor) -> DBIterator<K, V>;
 
     /// Iterator for user commands by sender via block height
-    fn txn_from_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
-
-    /// Iterator for user commands by sender via global slot
-    fn txn_from_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn txn_from_height_iterator<'a>(&'a self, anchor: IteratorAnchor) -> DBIterator<Vec<u8>, u32>;
 
     /// Iterator for user commands by sender via block height
-    fn txn_to_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
-
-    /// Iterator for user commands by receiver via global slot
-    fn txn_to_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn txn_to_height_iterator<'a>(&'a self, anchor: IteratorAnchor) -> DBIterator<K, V>;
 
     /////////////////////////
     // User command counts //

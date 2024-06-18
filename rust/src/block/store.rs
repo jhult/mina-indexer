@@ -3,8 +3,8 @@ use crate::{
     block::{precomputed::PrecomputedBlock, BlockHash},
     event::db::DbEvent,
     ledger::public_key::PublicKey,
+    store::{DBIterator, IteratorAnchor},
 };
-use speedb::{DBIterator, IteratorMode};
 
 pub trait BlockStore {
     /// Add block to the store
@@ -190,7 +190,10 @@ pub trait BlockStore {
     /// val: b""
     /// ```
     /// Use [block_state_hash_from_key] to extract state hash
-    fn blocks_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn blocks_height_iterator<'a>(
+        &'a self,
+        anchor: IteratorAnchor,
+    ) -> DBIterator<Vec<u8>, &[u8; 0]>;
 
     /// Iterator for blocks via global slot
     /// ```
@@ -198,7 +201,10 @@ pub trait BlockStore {
     /// val: b""
     /// ```
     /// Use [block_state_hash_from_key] to extract state hash
-    fn blocks_global_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn blocks_global_slot_iterator<'a>(
+        &'a self,
+        anchor: IteratorAnchor,
+    ) -> DBIterator<Vec<u8>, &[u8; 0]>;
 
     /// Iterator for block creators via block height
     /// ```
@@ -206,7 +212,10 @@ pub trait BlockStore {
     /// val: b""
     /// ```
     /// Use [block_state_hash_from_key] to extract state hash
-    fn block_creator_block_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn block_creator_block_height_iterator<'a>(
+        &'a self,
+        anchor: IteratorAnchor,
+    ) -> DBIterator<Vec<u8>, &[u8; 0]>;
 
     /// Iterator for block creators via global slot
     /// ```
@@ -214,7 +223,10 @@ pub trait BlockStore {
     /// val: b""
     /// ```
     /// Use [block_state_hash_from_key] to extract state hash
-    fn block_creator_global_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn block_creator_global_slot_iterator<'a>(
+        &'a self,
+        anchor: IteratorAnchor,
+    ) -> DBIterator<Vec<u8>, &[u8; 0]>;
 
     /// Iterator for coinbase receivers via block height
     /// ```
@@ -222,7 +234,10 @@ pub trait BlockStore {
     /// val: b""
     /// ```
     /// Use [block_state_hash_from_key] to extract state hash
-    fn coinbase_receiver_block_height_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn coinbase_receiver_block_height_iterator<'a>(
+        &'a self,
+        anchor: IteratorAnchor,
+    ) -> DBIterator<Vec<u8>, &[u8; 0]>;
 
     /// Iterator for coinbase receivers via global slot
     /// ```
@@ -230,7 +245,10 @@ pub trait BlockStore {
     /// val: b""
     /// ```
     /// Use [block_state_hash_from_key] to extract state hash
-    fn coinbase_receiver_global_slot_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn coinbase_receiver_global_slot_iterator<'a>(
+        &'a self,
+        anchor: IteratorAnchor,
+    ) -> DBIterator<Vec<u8>, &[u8; 0]>;
 
     //////////////////
     // Block counts //
@@ -265,11 +283,14 @@ pub trait BlockStore {
     fn dump_blocks_via_height(&self, path: &std::path::Path) -> anyhow::Result<()>;
 
     /// Blocks via height
-    fn blocks_via_height(&self, mode: IteratorMode) -> anyhow::Result<Vec<PrecomputedBlock>>;
+    fn blocks_via_height(&self, anchor: IteratorAnchor) -> anyhow::Result<Vec<PrecomputedBlock>>;
 
     /// Dump blocks via global slot to `path`
     fn dump_blocks_via_global_slot(&self, path: &std::path::Path) -> anyhow::Result<()>;
 
     /// Blocks via global_slot
-    fn blocks_via_global_slot(&self, mode: IteratorMode) -> anyhow::Result<Vec<PrecomputedBlock>>;
+    fn blocks_via_global_slot(
+        &self,
+        anchor: IteratorAnchor,
+    ) -> anyhow::Result<Vec<PrecomputedBlock>>;
 }

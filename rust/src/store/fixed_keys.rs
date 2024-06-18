@@ -1,14 +1,14 @@
 pub trait FixedKeys {
-    const CHAIN_ID_KEY: &'static [u8] = "current_chain_id".as_bytes();
-    const BEST_TIP_STATE_HASH_KEY: &'static [u8] = "best_tip_state_hash".as_bytes();
-    const NEXT_EVENT_SEQ_NUM_KEY: &'static [u8] = "next_event_seq_num".as_bytes();
-    const MAX_CANONICAL_KEY: &'static [u8] = "max_canonical_blockchain_length".as_bytes();
-    const KNOWN_GENESIS_STATE_HASHES_KEY: &'static [u8] = "genesis_state_hashes".as_bytes();
+    const CHAIN_ID_KEY: &'static str = "current_chain_id";
+    const BEST_TIP_STATE_HASH_KEY: &'static [u8] = "best_tip_block".as_bytes();
+    const NEXT_EVENT_SEQ_NUM_KEY: &'static str = "next_event_seq_num";
+    const MAX_CANONICAL_KEY: &'static str = "max_canonical_blockchain_length";
+    const KNOWN_GENESIS_STATE_HASHES_KEY: &'static str = "genesis_state_hashes";
     const KNOWN_GENESIS_PREV_STATE_HASHES_KEY: &'static [u8] =
         "genesis_prev_state_hashes".as_bytes();
 
     // version info
-    const INDEXER_STORE_VERSION_KEY: &'static [u8] = "indexer_store_version".as_bytes();
+    const INDEXER_STORE_VERSION_KEY: &'static str = "indexer_store_version";
 
     // indexed totals
     const TOTAL_NUM_ACCOUNTS_KEY: &'static [u8] = "total_num_accounts".as_bytes();

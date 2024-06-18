@@ -1,14 +1,17 @@
-use super::{column_families::ColumnFamilyHelpers, fixed_keys::FixedKeys};
+use super::{database::SNARK_TOP_PRODUCERS_SORT, fixed_keys::FixedKeys, DBIterator, IteratorAnchor};
 use crate::{
     block::{precomputed::PrecomputedBlock, store::BlockStore, BlockHash},
     ledger::public_key::PublicKey,
     snark_work::{
         store::SnarkStore, SnarkWorkSummary, SnarkWorkSummaryWithStateHash, SnarkWorkTotal,
     },
-    store::{from_be_bytes, to_be_bytes, u32_prefix_key, u64_prefix_key, IndexerStore},
+    store::{
+        database::{BLOCK_SNARK_COUNTS, SNARKS, SNARKS_EPOCH, SNARKS_PK_EPOCH, SNARKS_PK_TOTAL, SNARK_TOP_PRODUCERS, SNARK_WORK_FEES, SNARK_WORK_PROVER},
+        from_be_bytes, to_be_bytes, IndexerStore,
+    }, web::graphql::snarks::SnarkWithCanonicity,
 };
+use crate::store::u64_prefix_key;
 use log::trace;
-use speedb::{DBIterator, IteratorMode};
 use std::collections::HashMap;
 
 /// **Key format:** `{fee}{slot}{pk}{hash}{num}`
@@ -33,18 +36,6 @@ fn snark_fee_prefix_key(
     bytes
 }
 
-/// **Key format:** `{prover}{slot}{index}`
-/// ```
-/// - prover: [PublicKey::LEN] bytes
-/// - slot:   4 BE bytes
-/// - index:  4 BE bytes
-fn snark_prover_prefix_key(prover: &PublicKey, global_slot: u32, index: u32) -> Vec<u8> {
-    let mut bytes = prover.0.as_bytes().to_vec();
-    bytes.append(&mut to_be_bytes(global_slot));
-    bytes.append(&mut to_be_bytes(index));
-    bytes
-}
-
 impl SnarkStore for IndexerStore {
     fn add_snark_work(&self, block: &PrecomputedBlock) -> anyhow::Result<()> {
         trace!("Adding SNARK work from block {}", block.summary());
@@ -56,10 +47,8 @@ impl SnarkStore for IndexerStore {
         let completed_works_state_hash = SnarkWorkSummaryWithStateHash::from_precomputed(block);
 
         // add: state hash -> snark works
-        let state_hash = block.state_hash().0;
-        let key = state_hash.as_bytes();
-        let value = serde_json::to_vec(&completed_works)?;
-        self.database.put_cf(self.snarks_cf(), key, value)?;
+        let state_hash = block.state_hash();
+        self.put(SNARKS, state_hash, completed_works);
 
         // per block SNARK count
         self.set_block_snarks_count(&block.state_hash(), completed_works.len() as u32)?;
@@ -68,17 +57,12 @@ impl SnarkStore for IndexerStore {
         let mut num_prover_works: HashMap<PublicKey, u32> = HashMap::new();
         for snark in completed_works {
             let num = num_prover_works.get(&snark.prover).copied().unwrap_or(0);
-            self.database.put_cf(
-                self.snark_work_fees_cf(),
-                snark_fee_prefix_key(
-                    snark.fee,
-                    block.global_slot_since_genesis(),
-                    snark.prover.clone(),
-                    block.state_hash(),
-                    num,
-                ),
-                b"",
-            )?;
+            self.put(SNARK_WORK_FEES, (
+                snark.fee,
+                block.global_slot_since_genesis(),
+                snark.prover.clone(),
+                block.state_hash()),
+                num);
 
             // build the block's fee table
             if num_prover_works.get(&snark.prover).is_some() {
@@ -106,21 +90,20 @@ impl SnarkStore for IndexerStore {
                 // write these SNARKs to the next key for pk
                 let key = format!("{pk_str}{n}").as_bytes().to_vec();
                 let value = serde_json::to_vec(&block_pk_snarks)?;
-                self.database.put_cf(self.snarks_cf(), key, value)?;
+                self.put(self.snarks_cf(), key, value)?;
 
                 // update pk's next index
                 let key = pk_str.as_bytes();
                 let next_n = (n + 1).to_string();
                 let value = next_n.as_bytes();
-                self.database.put_cf(self.snarks_cf(), key, value)?;
+                self.put(self.snarks_cf(), key, value)?;
 
                 // increment SNARK counts
                 for (index, snark) in block_pk_snarks.iter().enumerate() {
                     if self
-                        .database
-                        .get_pinned_cf(
-                            self.snark_work_prover_cf(),
-                            snark_prover_prefix_key(&pk, global_slot, index as u32),
+                        .get(
+                            SNARK_WORK_PROVER,
+                            (&pk, global_slot, index as u32),
                         )?
                         .is_none()
                     {
@@ -137,9 +120,8 @@ impl SnarkStore for IndexerStore {
 
     fn get_pk_num_prover_blocks(&self, pk: &str) -> anyhow::Result<Option<u32>> {
         let key = pk.as_bytes();
-        Ok(self
-            .database
-            .get_pinned_cf(self.snarks_cf(), key)?
+        self.get(SNARKS, pk)
+        Ok(self.get(self.snarks_cf(), key)?
             .and_then(|bytes| {
                 String::from_utf8(bytes.to_vec())
                     .ok()
@@ -154,7 +136,6 @@ impl SnarkStore for IndexerStore {
         let pk = pk.to_address();
         trace!("Getting SNARK work for public key {pk}");
 
-        let snarks_cf = self.snarks_cf();
         let mut all_snarks = None;
         fn key_n(pk: String, n: u32) -> Vec<u8> {
             format!("{pk}{n}").as_bytes().to_vec()
@@ -164,7 +145,8 @@ impl SnarkStore for IndexerStore {
             for m in 0..n {
                 if let Some(mut block_m_snarks) = self
                     .database
-                    .get_pinned_cf(snarks_cf, key_n(pk.clone(), m))?
+                    // TODO: SNARKS TD
+                    .get_pinned_cf(self.snarks_cf(), key_n(pk.clone(), m))?
                     .map(|bytes| {
                         serde_json::from_slice::<Vec<SnarkWorkSummaryWithStateHash>>(&bytes)
                             .expect("snark work with state hash")
@@ -188,11 +170,7 @@ impl SnarkStore for IndexerStore {
     ) -> anyhow::Result<Option<Vec<SnarkWorkSummary>>> {
         trace!("Getting SNARK work in block {}", state_hash.0);
 
-        let key = state_hash.0.as_bytes();
-        if let Some(snarks_bytes) = self.database.get_pinned_cf(self.snarks_cf(), key)? {
-            return Ok(Some(serde_json::from_slice(&snarks_bytes)?));
-        }
-        Ok(None)
+        Ok(self.get(SNARKS, state_hash))
     }
 
     fn update_top_snarkers(&self, snarks: Vec<SnarkWorkSummary>) -> anyhow::Result<()> {
@@ -200,23 +178,16 @@ impl SnarkStore for IndexerStore {
 
         let mut prover_fees: HashMap<PublicKey, (u64, u64)> = HashMap::new();
         for snark in snarks {
-            let key = snark.prover.0.as_bytes();
+            let key = snark.prover;
             if prover_fees.get(&snark.prover).is_some() {
                 prover_fees.get_mut(&snark.prover).unwrap().1 += snark.fee;
             } else {
-                let old_total = self
-                    .database
-                    .get_pinned_cf(self.snark_top_producers_cf(), key)?
-                    .map_or(0, |fee_bytes| {
-                        serde_json::from_slice::<u64>(&fee_bytes).expect("fee is u64")
-                    });
+                // TODO: where is this set??
+                let old_total = self.get(SNARK_TOP_PRODUCERS, key).unwrap_or(0);
                 prover_fees.insert(snark.prover.clone(), (old_total, snark.fee));
 
                 // delete the stale data
-                self.database.delete_cf(
-                    self.snark_top_producers_sort_cf(),
-                    u64_prefix_key(old_total, &snark.prover.0),
-                )?
+                self.delete(SNARK_TOP_PRODUCERS_SORT, u64_prefix_key(old_total, &snark.prover.0));
             }
         }
 
@@ -224,8 +195,7 @@ impl SnarkStore for IndexerStore {
         for (prover, (old_total, new_fees)) in prover_fees.iter() {
             let total_fees = old_total + new_fees;
             let key = u64_prefix_key(total_fees, &prover.0);
-            self.database
-                .put_cf(self.snark_top_producers_sort_cf(), key, b"")?
+            self.put_sort(SNARK_TOP_PRODUCERS_SORT, key)?
         }
 
         Ok(())
@@ -234,7 +204,7 @@ impl SnarkStore for IndexerStore {
     fn get_top_snark_workers_by_fees(&self, n: usize) -> anyhow::Result<Vec<SnarkWorkTotal>> {
         trace!("Getting top {n} SNARK workers by fees");
         Ok(self
-            .top_snark_workers_iterator(IteratorMode::End)
+            .top_snark_workers_iterator(IteratorAnchor::End)
             .take(n)
             .map(|res| {
                 res.map(|(bytes, _)| {
@@ -250,13 +220,12 @@ impl SnarkStore for IndexerStore {
             .collect())
     }
 
-    fn top_snark_workers_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
-        self.database
-            .iterator_cf(self.snark_top_producers_sort_cf(), mode)
+    fn top_snark_workers_iterator<'a>(&'a self, anchor: IteratorAnchor) -> DBIterator<u64, PublicKey> {
+        self.iterator(SNARK_TOP_PRODUCERS_SORT, anchor)
     }
 
-    fn snark_fees_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
-        self.database.iterator_cf(self.snark_work_fees_cf(), mode)
+    fn snark_fees_iterator<'a>(&'a self, anchor: IteratorAnchor) -> DBIterator<(u64, u32, PublicKey, BlockHash), u32> {
+        self.iterator(SNARK_WORK_FEES, anchor)
     }
 
     fn set_snark_by_prover(
@@ -269,11 +238,7 @@ impl SnarkStore for IndexerStore {
             "Setting snark slot {global_slot} at index {index} for prover {}",
             snark.prover
         );
-        Ok(self.database.put_cf(
-            self.snark_work_prover_cf(),
-            snark_prover_prefix_key(&snark.prover, global_slot, index),
-            serde_json::to_vec(snark)?,
-        )?)
+        Ok(self.put(SNARK_WORK_PROVER, (&snark.prover, global_slot, index), snark))
     }
 
     /// `{prover}{slot}{index} -> snark`
@@ -281,8 +246,8 @@ impl SnarkStore for IndexerStore {
     /// - slot:   4 BE bytes
     /// - index:  4 BE bytes
     /// - snark:  serde_json encoded
-    fn snark_prover_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a> {
-        self.database.iterator_cf(self.snark_work_prover_cf(), mode)
+    fn snark_prover_iterator<'a>(&'a self, anchor: IteratorAnchor) -> DBIterator<(PublicKey, u32, u32), SnarkWithCanonicity> {
+        self.iterator(SNARK_WORK_PROVER, anchor)
     }
 
     fn set_snark_by_prover_height(
@@ -315,20 +280,13 @@ impl SnarkStore for IndexerStore {
     fn get_snarks_epoch_count(&self, epoch: Option<u32>) -> anyhow::Result<u32> {
         let epoch = epoch.unwrap_or(self.get_current_epoch()?);
         trace!("Getting epoch {epoch} SNARKs count");
-        Ok(self
-            .database
-            .get_pinned_cf(self.snarks_epoch_cf(), to_be_bytes(epoch))?
-            .map_or(0, |bytes| from_be_bytes(bytes.to_vec())))
+        Ok(self.get(SNARKS_EPOCH, epoch))
     }
 
     fn increment_snarks_epoch_count(&self, epoch: u32) -> anyhow::Result<()> {
         trace!("Incrementing epoch {epoch} SNARKs count");
         let old = self.get_snarks_epoch_count(Some(epoch))?;
-        Ok(self.database.put_cf(
-            self.snarks_epoch_cf(),
-            to_be_bytes(epoch),
-            to_be_bytes(old + 1),
-        )?)
+        Ok(self.put(SNARKS_EPOCH, epoch, old + 1))
     }
 
     fn get_snarks_total_count(&self) -> anyhow::Result<u32> {
@@ -351,56 +309,40 @@ impl SnarkStore for IndexerStore {
     fn get_snarks_pk_epoch_count(&self, pk: &PublicKey, epoch: Option<u32>) -> anyhow::Result<u32> {
         let epoch = epoch.unwrap_or(self.get_current_epoch()?);
         trace!("Getting pk epoch {epoch} SNARKs count {pk}");
-        Ok(self
-            .database
-            .get_pinned_cf(self.snarks_pk_epoch_cf(), u32_prefix_key(epoch, &pk.0))?
-            .map_or(0, |bytes| from_be_bytes(bytes.to_vec())))
+        Ok(self.get(SNARKS_PK_EPOCH, (epoch, pk)))
     }
 
     fn increment_snarks_pk_epoch_count(&self, pk: &PublicKey, epoch: u32) -> anyhow::Result<()> {
         trace!("Incrementing pk epoch {epoch} SNARKs count {pk}");
 
         let old = self.get_snarks_pk_epoch_count(pk, Some(epoch))?;
-        Ok(self.database.put_cf(
-            self.snarks_pk_epoch_cf(),
-            u32_prefix_key(epoch, &pk.0),
-            to_be_bytes(old + 1),
-        )?)
+        Ok(self.put(SNARKS_PK_EPOCH, (epoch, pk), old + 1))
     }
 
     fn get_snarks_pk_total_count(&self, pk: &PublicKey) -> anyhow::Result<u32> {
         trace!("Getting pk total SNARKs count {pk}");
-        Ok(self
-            .database
-            .get_pinned_cf(self.snarks_pk_total_cf(), pk.0.as_bytes())?
-            .map_or(0, |bytes| from_be_bytes(bytes.to_vec())))
+        Ok(self.get(SNARKS_PK_TOTAL, pk))
     }
 
     fn increment_snarks_pk_total_count(&self, pk: &PublicKey) -> anyhow::Result<()> {
         trace!("Incrementing pk total SNARKs count {pk}");
 
         let old = self.get_snarks_pk_total_count(pk)?;
-        Ok(self.database.put_cf(
-            self.snarks_pk_total_cf(),
-            pk.0.as_bytes(),
-            to_be_bytes(old + 1),
-        )?)
+        Ok(self.put(SNARKS_PK_TOTAL, pk, old + 1))
     }
 
     fn get_block_snarks_count(&self, state_hash: &BlockHash) -> anyhow::Result<Option<u32>> {
         trace!("Getting block SNARKs count {state_hash}");
         Ok(self
-            .database
-            .get_pinned_cf(self.block_snark_counts_cf(), state_hash.0.as_bytes())?
-            .map(|bytes| from_be_bytes(bytes.to_vec())))
+            .get(BLOCK_SNARK_COUNTS, state_hash))
     }
 
     fn set_block_snarks_count(&self, state_hash: &BlockHash, count: u32) -> anyhow::Result<()> {
         trace!("Setting block SNARKs count {state_hash} -> {count}");
-        Ok(self.database.put_cf(
-            self.block_snark_counts_cf(),
-            state_hash.0.as_bytes(),
-            to_be_bytes(count),
+        Ok(self.put(
+            BLOCK_SNARK_COUNTS,
+            state_hash,
+            count,
         )?)
     }
 

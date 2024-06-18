@@ -1,12 +1,17 @@
-use super::{
-    username::{UsernameAccountUpdate, UsernameStore, UsernameUpdate},
-    IndexerStore,
-};
 use crate::{
-    block::{store::BlockStore, BlockHash},
-    canonicity::store::CanonicityStore,
+    block::BlockHash,
     ledger::{public_key::PublicKey, username::Username},
-    store::{column_families::ColumnFamilyHelpers, from_be_bytes, to_be_bytes, DBUpdate},
+    store::{
+        database::{USERNAMES_PER_BLOCK, USERNAME_PK_INDEX, USERNAME_PK_NUM},
+        to_be_bytes,
+        username::UsernameUpdate,
+        DBUpdate,
+    },
+};
+
+use super::{
+    username::{UsernameAccountUpdate, UsernameStore},
+    IndexerStore,
 };
 use log::{error, trace};
 use std::collections::HashMap;
@@ -26,11 +31,7 @@ impl UsernameStore for IndexerStore {
         username_updates: &UsernameUpdate,
     ) -> anyhow::Result<()> {
         trace!("Setting block username updates {state_hash}");
-        Ok(self.database.put_cf(
-            self.usernames_per_block_cf(),
-            state_hash.0.as_bytes(),
-            serde_json::to_vec(username_updates)?,
-        )?)
+        Ok(self.put(USERNAMES_PER_BLOCK, state_hash, username_updates)?)
     }
 
     fn get_block_username_updates(
@@ -38,10 +39,7 @@ impl UsernameStore for IndexerStore {
         state_hash: &BlockHash,
     ) -> anyhow::Result<Option<HashMap<PublicKey, Username>>> {
         trace!("Getting block username updates {state_hash}");
-        Ok(self
-            .database
-            .get_pinned_cf(self.usernames_per_block_cf(), state_hash.0.as_bytes())?
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok()))
+        Ok(self.get(USERNAMES_PER_BLOCK, state_hash))
     }
 
     fn reorg_username_updates(
@@ -111,24 +109,19 @@ impl UsernameStore for IndexerStore {
                     // decr pk num username updates
                     if num == 0 {
                         // remove pk number
-                        self.database
-                            .delete_cf(self.username_pk_num_cf(), pk.0.as_bytes())?;
+                        self.dete(USERNAME_PK_NUM, pk)?;
 
                         // remove pk index
                         let mut key = pk.clone().to_bytes();
                         key.append(&mut to_be_bytes(0));
-                        self.database.delete_cf(self.username_pk_index_cf(), key)?;
+                        self.delete(USERNAME_PK_INDEX, key)?;
                     }
-                    self.database.put_cf(
-                        self.username_pk_num_cf(),
-                        pk.0.as_bytes(),
-                        to_be_bytes(num - 1),
-                    )?;
+                    self.put(USERNAME_PK_NUM, pk, num - 1)?;
 
                     // drop last update
                     let mut key = pk.clone().to_bytes();
                     key.append(&mut to_be_bytes(num));
-                    self.database.delete_cf(self.username_pk_index_cf(), key)?;
+                    self.delete(USERNAME_PK_INDEX, key)?;
                 } else {
                     error!("Invalid username pk num {pk}");
                 }
@@ -141,35 +134,19 @@ impl UsernameStore for IndexerStore {
                 if let Some(mut num) = self.get_pk_num_username_updates(&pk)? {
                     // incr pk num username updates
                     num += 1;
-                    self.database.put_cf(
-                        self.username_pk_num_cf(),
-                        pk.0.as_bytes(),
-                        to_be_bytes(num),
-                    )?;
+                    self.put(USERNAME_PK_NUM, pk, num)?;
 
                     // add update
                     let mut key = pk.to_bytes();
                     key.append(&mut to_be_bytes(num));
-                    self.database.put_cf(
-                        self.username_pk_index_cf(),
-                        key,
-                        username.0.as_bytes(),
-                    )?;
+                    self.put(USERNAME_PK_INDEX, key, username.0.as_bytes())?;
                 } else {
-                    self.database.put_cf(
-                        self.username_pk_num_cf(),
-                        pk.0.as_bytes(),
-                        to_be_bytes(0),
-                    )?;
+                    self.put(USERNAME_PK_NUM, pk, 0)?;
 
                     // add update
                     let mut key = pk.to_bytes();
                     key.append(&mut to_be_bytes(0));
-                    self.database.put_cf(
-                        self.username_pk_index_cf(),
-                        key,
-                        username.0.as_bytes(),
-                    )?;
+                    self.put(USERNAME_PK_INDEX, key, username.0.as_bytes())?;
                 }
             }
         }
@@ -180,17 +157,11 @@ impl UsernameStore for IndexerStore {
         trace!("Getting pk's {index}th username {pk}");
         let mut key = pk.clone().to_bytes();
         key.append(&mut to_be_bytes(index));
-        Ok(self
-            .database
-            .get_cf(self.username_pk_index_cf(), key)?
-            .and_then(|bytes| Username::from_bytes(bytes).ok()))
+        Ok(self.get(USERNAME_PK_INDEX, key))
     }
 
     fn get_pk_num_username_updates(&self, pk: &PublicKey) -> anyhow::Result<Option<u32>> {
         trace!("Getting pk's number of username updates {pk}");
-        Ok(self
-            .database
-            .get_cf(self.username_pk_num_cf(), pk.0.as_bytes())?
-            .map(from_be_bytes))
+        Ok(self.get(USERNAME_PK_NUM, pk))
     }
 }

@@ -42,7 +42,7 @@ fn check_balance() -> anyhow::Result<()> {
     let mut curr_ledger_balance = None;
     let best_ledger = indexer_store.get_best_ledger()?.unwrap();
     for (n, (key, _)) in indexer_store
-        .account_balance_iterator(speedb::IteratorMode::End)
+        .account_balance_iterator(IteratorAnchor::End)
         .flatten()
         .enumerate()
     {

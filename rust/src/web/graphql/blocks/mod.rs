@@ -125,10 +125,7 @@ impl BlocksQueryRoot {
         }
 
         // else iterate over height-sorted blocks
-        for (key, _) in db
-            .blocks_height_iterator(speedb::IteratorMode::End)
-            .flatten()
-        {
+        for (key, _) in db.blocks_height_iterator(IteratorAnchor::End).flatten() {
             let state_hash = block_state_hash_from_key(&key)?;
             let pcb = get_block(db, &state_hash);
             let canonical = get_block_canonicity(db, &state_hash.0);
@@ -174,7 +171,7 @@ impl BlocksQueryRoot {
         #[graphql(default = 100)] limit: usize,
         sort_by: Option<BlockSortByInput>,
     ) -> Result<Vec<Block>> {
-        use speedb::{Direction::*, IteratorMode::*};
+        use crate::store::{Direction::*, IteratorAnchor::*};
         use BlockSortByInput::*;
 
         let db = db(ctx);

@@ -12,7 +12,7 @@ pub mod account_store_impl;
 pub mod block_store_impl;
 pub mod canonicity_store_impl;
 pub mod chain_store_impl;
-pub mod column_families_impl;
+pub mod database;
 pub mod event_store_impl;
 pub mod internal_command_store_impl;
 pub mod ledger_store_impl;
@@ -110,6 +110,82 @@ pub fn restore_snapshot(
                 "Snapshot restored to {restore_dir:#?}.\n\nPlease start server using: `server sync --database-dir {restore_dir:#?}`"
             ))
     }
+
+    pub(crate) fn get<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+        key: K,
+    ) -> Option<V> {
+        self.readable(definition).get(key)?.map(|v| v.value())
+    }
+
+    fn readable<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+    ) -> ReadOnlyTable<K, V> {
+        self.database.begin_read()?.open_table(definition)?
+    }
+
+    fn iterator<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+        anchor: IteratorAnchor,
+    ) -> DBIterator<K, V> {
+        let iterator = self.readable(definition).iter()?;
+        match anchor {
+            IteratorAnchor::Start => iterator,
+            IteratorAnchor::End => iterator.rev(),
+            IteratorAnchor::From(num, direction) => {
+                let iterator = iterator.skip(num);
+                match direction {
+                    Direction::Forward => iterator,
+                    Direction::Reverse => iterator.rev(),
+                }
+            }
+        }
+    }
+
+    /// Insert mapping of the given key to the given value
+    ///
+    /// If key is already present it is replaced
+    ///
+    /// Returns the old value, if the key was present in the table, otherwise None is returned
+    pub(crate) fn put<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+        key: K,
+        value: V,
+    ) -> redb::Result<Option<AccessGuard<V>>> {
+        let txn = &self.database.begin_write()?;
+        let return_val = txn.open_table(definition)?.insert(key, value);
+        txn.commit();
+        return_val
+    }
+
+    pub(crate) fn put_sort<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+        key: K,
+    ) -> redb::Result<Option<AccessGuard<V>>> {
+        let txn = &self.database.begin_write()?;
+        let return_val = txn.open_table(definition)?.insert(key, b"");
+        txn.commit();
+        return_val
+    }
+
+    /// Removes the given key
+    ///
+    /// Returns the old value, if the key was present in the table
+    pub(crate) fn delete<'a, K: Key + 'static, V: Value + 'static>(
+        &self,
+        definition: TableDefinition<'a, K, V>,
+        key: K,
+    ) -> redb::Result<Option<AccessGuard<V>>> {
+        let txn = &self.database.begin_write()?;
+        let return_val = txn.open_table(definition)?.remove(key);
+        txn.commit();
+        return_val
+    }
 }
 
 fn decompress_file(compressed_file_path: &PathBuf, output_dir: &PathBuf) -> io::Result<()> {
@@ -190,10 +266,8 @@ pub fn from_be_bytes(bytes: Vec<u8>) -> u32 {
 /// The first 4 bytes are `prefix` in big endian
 /// - `prefix`: global slot, epoch number, etc
 /// - `suffix`: txn hash, public key, etc
-fn u32_prefix_key(prefix: u32, suffix: &str) -> Vec<u8> {
-    let mut bytes = to_be_bytes(prefix);
-    bytes.append(&mut suffix.as_bytes().to_vec());
-    bytes
+fn u32_prefix_key(prefix: u32, suffix: &str) -> (u32, &str) {
+    (prefix, suffix)
 }
 
 /// The first 8 bytes are `prefix` in big endian
@@ -297,3 +371,18 @@ impl FixedKeys for IndexerStore {}
 impl IndexerStore {
     // TODO: expose redb::TableStats
 }
+
+#[derive(Clone)]
+pub enum IteratorAnchor<'a> {
+    Start,
+    End,
+    From(&'a [u8], Direction),
+}
+
+#[derive(Copy, Clone)]
+pub enum Direction {
+    Forward,
+    Reverse,
+}
+
+pub type DBIterator<'a, K, V> = Range<'a, K, V>;

@@ -1,7 +1,7 @@
-use super::{column_families::ColumnFamilyHelpers, fixed_keys::FixedKeys};
+use super::{database::CHAIN_ID_TO_NETWORK, fixed_keys::FixedKeys};
 use crate::{
     chain::{store::ChainStore, ChainId, Network},
-    store::IndexerStore,
+    store::{database::STRING_KEYS, IndexerStore},
 };
 use log::trace;
 
@@ -17,28 +17,18 @@ impl ChainStore for IndexerStore {
             network
         );
 
-        let chain_bytes = chain_id.0.as_bytes();
-
         // add the new pair
-        self.database.put_cf(
-            self.chain_id_to_network_cf(),
-            chain_bytes,
-            network.to_string().as_bytes(),
-        )?;
+        self.put(CHAIN_ID_TO_NETWORK, chain_id, network);
 
         // update current chain_id
-        self.database.put(Self::CHAIN_ID_KEY, chain_bytes)?;
+        self.database
+            .write(STRING_KEYS, Self::CHAIN_ID_KEY, &chain_id.0);
         Ok(())
     }
 
     fn get_network(&self, chain_id: &ChainId) -> anyhow::Result<Network> {
         trace!("Getting network for chain id: {}", chain_id.0);
-        Ok(Network::from(
-            self.database
-                .get_pinned_cf(self.chain_id_to_network_cf(), chain_id.0.as_bytes())?
-                .expect("network should exist in database")
-                .to_vec(),
-        ))
+        Ok(self.get(CHAIN_ID_TO_NETWORK, chain_id))
     }
 
     fn get_current_network(&self) -> anyhow::Result<Network> {
@@ -48,10 +38,6 @@ impl ChainStore for IndexerStore {
 
     fn get_chain_id(&self) -> anyhow::Result<ChainId> {
         trace!("Getting chain id");
-        Ok(ChainId(String::from_utf8(
-            self.database
-                .get(Self::CHAIN_ID_KEY)?
-                .expect("chain id should exist in database"),
-        )?))
+        Ok(ChainId(self.get(STRING_KEYS, Self::CHAIN_ID_KEY)))
     }
 }

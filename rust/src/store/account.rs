@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use speedb::{DBIterator, IteratorMode};
 use std::collections::HashMap;
 
+use super::{DBIterator, IteratorAnchor};
+
 pub trait AccountStore {
     /// Update pk's balance-sorted account balance
     fn update_account_balance(&self, pk: &PublicKey, balance: Option<u64>) -> anyhow::Result<()>;
@@ -63,7 +65,7 @@ pub trait AccountStore {
     /// ```
     /// - balance: 8 BE bytes
     /// - pk:      [PublicKey::LEN] bytes
-    fn account_balance_iterator<'a>(&'a self, mode: IteratorMode) -> DBIterator<'a>;
+    fn account_balance_iterator<'a>(&'a self, anchor: IteratorAnchor) -> DBIterator<Vec<u8>, u64>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
