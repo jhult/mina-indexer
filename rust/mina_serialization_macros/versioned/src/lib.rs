@@ -15,6 +15,7 @@
 
 pub mod macros;
 
+use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
 /// A generic version wrapper around another type
@@ -43,7 +44,7 @@ pub type Versioned4<T, const MAJOR: u16, const MINOR: u16, const PATCH: u16, con
 
 impl<T, const V: u16> Default for Versioned<T, V>
 where
-    T: Default,
+    T: Default + Decode + Encode,
 {
     fn default() -> Self {
         Self {
@@ -53,7 +54,7 @@ where
     }
 }
 
-impl<T, const V: u16> Versioned<T, V> {
+impl<T: Decode + Encode, const V: u16> Versioned<T, V> {
     /// create a new version type of the given const version
     pub fn new(t: T) -> Self {
         Self { version: V, t }
@@ -70,21 +71,21 @@ impl<T, const V: u16> Versioned<T, V> {
     }
 }
 
-impl<T, const V: u16> From<T> for Versioned<T, V> {
+impl<T: Decode + Encode, const V: u16> From<T> for Versioned<T, V> {
     #[inline]
     fn from(t: T) -> Self {
         Versioned::new(t)
     }
 }
 
-impl<T, const V: u16> From<Versioned<T, V>> for (T,) {
+impl<T: Decode + Encode, const V: u16> From<Versioned<T, V>> for (T,) {
     #[inline]
     fn from(t: Versioned<T, V>) -> Self {
         (t.t,)
     }
 }
 
-impl<T, const V1: u16, const V2: u16> From<T> for Versioned2<T, V1, V2> {
+impl<T: Decode + Encode, const V1: u16, const V2: u16> From<T> for Versioned2<T, V1, V2> {
     #[inline]
     fn from(t: T) -> Self {
         let t: Versioned<T, V2> = t.into();
@@ -92,7 +93,7 @@ impl<T, const V1: u16, const V2: u16> From<T> for Versioned2<T, V1, V2> {
     }
 }
 
-impl<T, const V1: u16, const V2: u16> From<Versioned2<T, V1, V2>> for (T,) {
+impl<T: Decode + Encode, const V1: u16, const V2: u16> From<Versioned2<T, V1, V2>> for (T,) {
     #[inline]
     fn from(t: Versioned2<T, V1, V2>) -> Self {
         let (t,): (Versioned<T, V2>,) = t.into();
@@ -100,7 +101,9 @@ impl<T, const V1: u16, const V2: u16> From<Versioned2<T, V1, V2>> for (T,) {
     }
 }
 
-impl<T, const V1: u16, const V2: u16, const V3: u16> From<T> for Versioned3<T, V1, V2, V3> {
+impl<T: Decode + Encode, const V1: u16, const V2: u16, const V3: u16> From<T>
+    for Versioned3<T, V1, V2, V3>
+{
     #[inline]
     fn from(t: T) -> Self {
         let t: Versioned2<T, V2, V3> = t.into();
@@ -108,7 +111,9 @@ impl<T, const V1: u16, const V2: u16, const V3: u16> From<T> for Versioned3<T, V
     }
 }
 
-impl<T, const V1: u16, const V2: u16, const V3: u16> From<Versioned3<T, V1, V2, V3>> for (T,) {
+impl<T: Decode + Encode, const V1: u16, const V2: u16, const V3: u16>
+    From<Versioned3<T, V1, V2, V3>> for (T,)
+{
     #[inline]
     fn from(t: Versioned3<T, V1, V2, V3>) -> Self {
         let (t,): (Versioned2<T, V2, V3>,) = t.into();
@@ -116,7 +121,7 @@ impl<T, const V1: u16, const V2: u16, const V3: u16> From<Versioned3<T, V1, V2, 
     }
 }
 
-impl<T, const V1: u16, const V2: u16, const V3: u16, const V4: u16> From<T>
+impl<T: Decode + Encode, const V1: u16, const V2: u16, const V3: u16, const V4: u16> From<T>
     for Versioned4<T, V1, V2, V3, V4>
 {
     #[inline]
@@ -126,7 +131,7 @@ impl<T, const V1: u16, const V2: u16, const V3: u16, const V4: u16> From<T>
     }
 }
 
-impl<T, const V1: u16, const V2: u16, const V3: u16, const V4: u16>
+impl<T: Decode + Encode, const V1: u16, const V2: u16, const V3: u16, const V4: u16>
     From<Versioned4<T, V1, V2, V3, V4>> for (T,)
 {
     #[inline]
