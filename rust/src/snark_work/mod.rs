@@ -5,9 +5,10 @@ use crate::{
     ledger::public_key::PublicKey,
     protocol::serialization_types::snark_work as mina_rs,
 };
+use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Decode, Encode)]
 pub struct SnarkWorkSummary {
     pub fee: u64,
     pub prover: PublicKey,

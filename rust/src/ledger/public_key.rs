@@ -3,9 +3,10 @@ use crate::{
     protocol::serialization_types::signatures::PublicKeyV1,
 };
 use anyhow::bail;
+use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Decode, Encode)]
 pub struct PublicKey(pub String);
 
 impl PublicKey {

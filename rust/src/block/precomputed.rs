@@ -66,7 +66,7 @@ pub enum PcbVersion {
     V2,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Decode, Encode)]
 #[serde(untagged)]
 pub enum PrecomputedBlock {
     V1(Box<PrecomputedBlockV1>),

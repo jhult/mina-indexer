@@ -24,10 +24,11 @@ pub mod version_store_impl;
 use self::fixed_keys::FixedKeys;
 use crate::{block::BlockHash, command::signed::TXN_HASH_LEN, ledger::public_key::PublicKey};
 use anyhow::{anyhow, Context};
+use bincode::{Decode, Encode};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use log::{debug, error};
+use redb_bincode::{AccessGuard, Database, ReadOnlyTable, StorageError, TableDefinition};
 use serde::{Deserialize, Serialize};
-use speedb::{ColumnFamilyDescriptor, DBCompressionType, DB};
 use std::{
     fs::{self, read_dir, File},
     io::{self, prelude::*, Write},
@@ -55,7 +56,7 @@ impl IndexerStore {
         let primary = Self {
             is_primary: true,
             db_path: path.into(),
-            database: Database::create(path),
+            database: redb_bincode::Database::open(path)?,
         };
 
         // set db version
@@ -69,69 +70,34 @@ impl IndexerStore {
         Ok(primary)
     }
 
-    /// Create a snapshot of the Indexer store
-    pub fn create_snapshot(&self, output_filepath: &PathBuf) -> Result<String, anyhow::Error> {
-        use speedb::checkpoint::Checkpoint;
-
-        let mut snapshot_temp_dir = output_filepath.clone();
-        snapshot_temp_dir.set_extension("tmp-snapshot");
-        Checkpoint::new(&self.database)?
-            .create_checkpoint(&snapshot_temp_dir)
-            .map_err(|e| anyhow!("Error creating database snapshot: {e}"))
-            .and_then(|_| {
-                compress_directory(&snapshot_temp_dir, output_filepath)
-                    .with_context(|| "Failed to compress database.")
-            })
-            .and_then(|_| {
-                fs::remove_dir_all(&snapshot_temp_dir)
-                    .with_context(|| format!("Failed to remove directory {snapshot_temp_dir:#?})"))
-            })
-            .map(|_| format!("Snapshot created and saved as {output_filepath:#?}"))
-    }
-}
-
-/// Restore a snapshot of the Indexer store
-pub fn restore_snapshot(
-    snapshot_file_path: &PathBuf,
-    restore_dir: &PathBuf,
-) -> Result<String, anyhow::Error> {
-    if !snapshot_file_path.exists() {
-        let msg = format!("{snapshot_file_path:#?} does not exist");
-        error!("{msg}");
-        Err(anyhow!(msg))
-    } else if restore_dir.is_dir() {
-        let msg = format!("{restore_dir:#?} must not exist (but currently does)");
-        error!("{msg}");
-        Err(anyhow!(msg))
-    } else {
-        decompress_file(snapshot_file_path, restore_dir)
-            .with_context(|| format!("Failed to decompress file {snapshot_file_path:#?}"))
-            .map(|_| format!(
-                "Snapshot restored to {restore_dir:#?}.\n\nPlease start server using: `server sync --database-dir {restore_dir:#?}`"
-            ))
-    }
-
-    pub(crate) fn get<'a, K: Key + 'static, V: Value + 'static>(
+    pub(crate) fn get<'a, K: Encode + Decode, V: Encode + Decode>(
         &self,
         definition: TableDefinition<'a, K, V>,
         key: K,
     ) -> Option<V> {
-        self.readable(definition).get(key)?.map(|v| v.value())
+        self.readable(definition)
+            .get(&key)
+            .unwrap()
+            .map(|v| v.value())
     }
 
-    fn readable<'a, K: Key + 'static, V: Value + 'static>(
+    fn readable<'a, K: Encode + Decode, V: Encode + Decode>(
         &self,
         definition: TableDefinition<'a, K, V>,
-    ) -> ReadOnlyTable<K, V> {
-        self.database.begin_read()?.open_table(definition)?
+    ) -> ReadOnlyTable<K, V, redb_bincode::Lexicographical> {
+        self.database
+            .begin_read()
+            .unwrap()
+            .open_table(&definition)
+            .unwrap()
     }
 
-    fn iterator<'a, K: Key + 'static, V: Value + 'static>(
+    fn iterator<'a, K: Encode + Decode, V: Encode + Decode>(
         &self,
         definition: TableDefinition<'a, K, V>,
         anchor: IteratorAnchor,
-    ) -> DBIterator<K, V> {
-        let iterator = self.readable(definition).iter()?;
+    ) -> DBIterator<'a, K, V> {
+        let iterator = self.readable(definition).range(range).iter()?;
         match anchor {
             IteratorAnchor::Start => iterator,
             IteratorAnchor::End => iterator.rev(),
@@ -150,39 +116,37 @@ pub fn restore_snapshot(
     /// If key is already present it is replaced
     ///
     /// Returns the old value, if the key was present in the table, otherwise None is returned
-    pub(crate) fn put<'a, K: Key + 'static, V: Value + 'static>(
+    pub(crate) fn put<'a, K: Encode + Decode, V: Encode + Decode>(
         &self,
         definition: TableDefinition<'a, K, V>,
         key: K,
         value: V,
-    ) -> redb::Result<Option<AccessGuard<V>>> {
-        let txn = &self.database.begin_write()?;
-        let return_val = txn.open_table(definition)?.insert(key, value);
+    ) -> Result<Option<AccessGuard<'_, V>>, StorageError> {
+        let txn = self.database.begin_write().unwrap();
+        let return_val = &txn.open_table(&definition).unwrap().insert(&key, &value);
         txn.commit();
         return_val
     }
 
-    pub(crate) fn put_sort<'a, K: Key + 'static, V: Value + 'static>(
+    pub(crate) fn put_sort<K: Encode + Decode, V: Encode + Decode>(
         &self,
-        definition: TableDefinition<'a, K, V>,
+        definition: TableDefinition<K, V>,
         key: K,
-    ) -> redb::Result<Option<AccessGuard<V>>> {
-        let txn = &self.database.begin_write()?;
-        let return_val = txn.open_table(definition)?.insert(key, b"");
-        txn.commit();
-        return_val
+    ) -> Result<Option<AccessGuard<'_, &str>>, StorageError> {
+        self.put(definition, key, b"");
+        Ok(None)
     }
 
     /// Removes the given key
     ///
     /// Returns the old value, if the key was present in the table
-    pub(crate) fn delete<'a, K: Key + 'static, V: Value + 'static>(
+    pub(crate) fn delete<K: Encode + Decode, V: Encode + Decode>(
         &self,
-        definition: TableDefinition<'a, K, V>,
+        definition: TableDefinition<K, V>,
         key: K,
-    ) -> redb::Result<Option<AccessGuard<V>>> {
+    ) -> Result<Option<AccessGuard<'_, V>>, StorageError> {
         let txn = &self.database.begin_write()?;
-        let return_val = txn.open_table(definition)?.remove(key);
+        let return_val = txn.open_table(&definition)?.remove(&key);
         txn.commit();
         return_val
     }

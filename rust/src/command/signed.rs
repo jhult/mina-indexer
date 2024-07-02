@@ -5,6 +5,7 @@ use crate::{
         serialization_types::{staged_ledger_diff as mina_rs, version_bytes::V1_TXN_HASH},
     },
 };
+use bincode::{Decode, Encode};
 use blake2::digest::VariableOutput;
 use mina_serialization_versioned::Versioned2;
 use serde::{Deserialize, Serialize};
@@ -19,7 +20,7 @@ pub struct SignedCommandWithStateHash {
     pub state_hash: BlockHash,
 }
 
-#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize, Decode, Encode)]
 pub struct SignedCommandWithData {
     pub command: SignedCommand,
     pub state_hash: BlockHash,

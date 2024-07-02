@@ -13,6 +13,7 @@ use crate::protocol::serialization_types::{
     snark_work::{TransactionSnarkWorkJson, TransactionSnarkWorkV1},
     version_bytes,
 };
+use bincode::{Decode, Encode};
 use mina_serialization_proc_macros::AutoFrom;
 use mina_serialization_versioned::{
     impl_mina_enum_json_serde, impl_mina_enum_json_serde_with_option, Versioned, Versioned2,
@@ -325,7 +326,7 @@ pub enum TransactionStatusJson {
 
 impl_mina_enum_json_serde!(TransactionStatusJson, TransactionStatusJsonProxy);
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Decode, Encode)]
 pub struct TransactionStatusAuxiliaryData {
     pub fee_payer_account_creation_fee_paid: Option<AmountV1>,
     pub receiver_account_creation_fee_paid: Option<AmountV1>,
@@ -342,7 +343,7 @@ pub struct TransactionStatusAuxiliaryDataJson {
     pub created_token: Option<U64Json>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Decode, Encode)]
 pub enum TransactionStatusFailedType {
     #[serde(rename = "Predicate")]
     Predicate,
@@ -448,7 +449,7 @@ pub enum TransactionStatusFailedTypeJson {
     IncorrectNonce,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Decode, Encode)]
 pub struct TransactionStatusBalanceData {
     pub fee_payer_balance: Option<ExtendedU64_3>,
     pub source_balance: Option<ExtendedU64_3>,

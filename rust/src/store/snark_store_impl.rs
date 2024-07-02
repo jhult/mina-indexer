@@ -1,4 +1,7 @@
-use super::{database::SNARK_TOP_PRODUCERS_SORT, fixed_keys::FixedKeys, DBIterator, IteratorAnchor};
+use super::{
+    database::SNARK_TOP_PRODUCERS_SORT, fixed_keys::FixedKeys, DBIterator, IteratorAnchor,
+};
+use crate::store::u64_prefix_key;
 use crate::{
     block::{precomputed::PrecomputedBlock, store::BlockStore, BlockHash},
     ledger::public_key::PublicKey,
@@ -6,11 +9,14 @@ use crate::{
         store::SnarkStore, SnarkWorkSummary, SnarkWorkSummaryWithStateHash, SnarkWorkTotal,
     },
     store::{
-        database::{BLOCK_SNARK_COUNTS, SNARKS, SNARKS_EPOCH, SNARKS_PK_EPOCH, SNARKS_PK_TOTAL, SNARK_TOP_PRODUCERS, SNARK_WORK_FEES, SNARK_WORK_PROVER},
+        database::{
+            BLOCK_SNARK_COUNTS, SNARKS, SNARKS_EPOCH, SNARKS_PK_EPOCH, SNARKS_PK_TOTAL,
+            SNARK_TOP_PRODUCERS, SNARK_WORK_FEES, SNARK_WORK_PROVER,
+        },
         from_be_bytes, to_be_bytes, IndexerStore,
-    }, web::graphql::snarks::SnarkWithCanonicity,
+    },
+    web::graphql::snarks::SnarkWithCanonicity,
 };
-use crate::store::u64_prefix_key;
 use log::trace;
 use std::collections::HashMap;
 
@@ -57,12 +63,16 @@ impl SnarkStore for IndexerStore {
         let mut num_prover_works: HashMap<PublicKey, u32> = HashMap::new();
         for snark in completed_works {
             let num = num_prover_works.get(&snark.prover).copied().unwrap_or(0);
-            self.put(SNARK_WORK_FEES, (
-                snark.fee,
-                block.global_slot_since_genesis(),
-                snark.prover.clone(),
-                block.state_hash()),
-                num);
+            self.put(
+                SNARK_WORK_FEES,
+                (
+                    snark.fee,
+                    block.global_slot_since_genesis(),
+                    snark.prover.clone(),
+                    block.state_hash(),
+                ),
+                num,
+            );
 
             // build the block's fee table
             if num_prover_works.get(&snark.prover).is_some() {
@@ -101,10 +111,7 @@ impl SnarkStore for IndexerStore {
                 // increment SNARK counts
                 for (index, snark) in block_pk_snarks.iter().enumerate() {
                     if self
-                        .get(
-                            SNARK_WORK_PROVER,
-                            (&pk, global_slot, index as u32),
-                        )?
+                        .get(SNARK_WORK_PROVER, (&pk, global_slot, index as u32))?
                         .is_none()
                     {
                         let snark: SnarkWorkSummary = snark.clone().into();
@@ -120,13 +127,12 @@ impl SnarkStore for IndexerStore {
 
     fn get_pk_num_prover_blocks(&self, pk: &str) -> anyhow::Result<Option<u32>> {
         let key = pk.as_bytes();
-        self.get(SNARKS, pk)
-        Ok(self.get(self.snarks_cf(), key)?
-            .and_then(|bytes| {
-                String::from_utf8(bytes.to_vec())
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-            }))
+        self.get(SNARKS, pk);
+        Ok(self.get(self.snarks_cf(), key)?.and_then(|bytes| {
+            String::from_utf8(bytes.to_vec())
+                .ok()
+                .and_then(|s| s.parse().ok())
+        }))
     }
 
     fn get_snark_work_by_public_key(
@@ -187,7 +193,10 @@ impl SnarkStore for IndexerStore {
                 prover_fees.insert(snark.prover.clone(), (old_total, snark.fee));
 
                 // delete the stale data
-                self.delete(SNARK_TOP_PRODUCERS_SORT, u64_prefix_key(old_total, &snark.prover.0));
+                self.delete(
+                    SNARK_TOP_PRODUCERS_SORT,
+                    u64_prefix_key(old_total, &snark.prover.0),
+                );
             }
         }
 
@@ -220,11 +229,17 @@ impl SnarkStore for IndexerStore {
             .collect())
     }
 
-    fn top_snark_workers_iterator<'a>(&'a self, anchor: IteratorAnchor) -> DBIterator<u64, PublicKey> {
+    fn top_snark_workers_iterator<'a>(
+        &'a self,
+        anchor: IteratorAnchor,
+    ) -> DBIterator<u64, PublicKey> {
         self.iterator(SNARK_TOP_PRODUCERS_SORT, anchor)
     }
 
-    fn snark_fees_iterator<'a>(&'a self, anchor: IteratorAnchor) -> DBIterator<(u64, u32, PublicKey, BlockHash), u32> {
+    fn snark_fees_iterator<'a>(
+        &'a self,
+        anchor: IteratorAnchor,
+    ) -> DBIterator<(u64, u32, PublicKey, BlockHash), u32> {
         self.iterator(SNARK_WORK_FEES, anchor)
     }
 
@@ -238,7 +253,11 @@ impl SnarkStore for IndexerStore {
             "Setting snark slot {global_slot} at index {index} for prover {}",
             snark.prover
         );
-        Ok(self.put(SNARK_WORK_PROVER, (&snark.prover, global_slot, index), snark))
+        Ok(self.put(
+            SNARK_WORK_PROVER,
+            (&snark.prover, global_slot, index),
+            snark,
+        ))
     }
 
     /// `{prover}{slot}{index} -> snark`
@@ -246,7 +265,10 @@ impl SnarkStore for IndexerStore {
     /// - slot:   4 BE bytes
     /// - index:  4 BE bytes
     /// - snark:  serde_json encoded
-    fn snark_prover_iterator<'a>(&'a self, anchor: IteratorAnchor) -> DBIterator<(PublicKey, u32, u32), SnarkWithCanonicity> {
+    fn snark_prover_iterator<'a>(
+        &'a self,
+        anchor: IteratorAnchor,
+    ) -> DBIterator<(PublicKey, u32, u32), SnarkWithCanonicity> {
         self.iterator(SNARK_WORK_PROVER, anchor)
     }
 
@@ -333,17 +355,12 @@ impl SnarkStore for IndexerStore {
 
     fn get_block_snarks_count(&self, state_hash: &BlockHash) -> anyhow::Result<Option<u32>> {
         trace!("Getting block SNARKs count {state_hash}");
-        Ok(self
-            .get(BLOCK_SNARK_COUNTS, state_hash))
+        Ok(self.get(BLOCK_SNARK_COUNTS, state_hash))
     }
 
     fn set_block_snarks_count(&self, state_hash: &BlockHash, count: u32) -> anyhow::Result<()> {
         trace!("Setting block SNARKs count {state_hash} -> {count}");
-        Ok(self.put(
-            BLOCK_SNARK_COUNTS,
-            state_hash,
-            count,
-        )?)
+        Ok(self.put(BLOCK_SNARK_COUNTS, state_hash, count)?)
     }
 
     fn increment_snarks_counts(&self, snark: &SnarkWorkSummary, epoch: u32) -> anyhow::Result<()> {

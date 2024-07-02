@@ -8,6 +8,7 @@ use crate::{
     ledger::{account::Amount, public_key::PublicKey},
     protocol::serialization_types::staged_ledger_diff as mina_rs,
 };
+use bincode::{Decode, Encode};
 use log::trace;
 use mina_serialization_versioned::Versioned;
 use serde::{Deserialize, Serialize};
@@ -46,7 +47,7 @@ pub struct Delegation {
     pub delegate: PublicKey,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Decode, Encode)]
 pub enum CommandStatusData {
     Applied {
         auxiliary_data: mina_rs::TransactionStatusAuxiliaryData,

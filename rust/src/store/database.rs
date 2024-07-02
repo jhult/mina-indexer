@@ -348,6 +348,9 @@ pub(crate) const STAKING_LEDGER_STAKE: TableDefinition<Vec<u8>, StakingAccount> 
 pub(crate) const SNARKS: TableDefinition<BlockHash, Vec<SnarkWorkSummary>> =
     TableDefinition::new("snarks");
 
+pub(crate) const SNARKS_PK: TableDefinition<BlockHash, Vec<SnarkWorkSummary>> =
+    TableDefinition::new("snarks");
+
 /// CF for storing all snark work fee totals
 pub(crate) const SNARK_TOP_PRODUCERS: TableDefinition<PublicKey, u64> =
     TableDefinition::new("snark-work-top-producers");

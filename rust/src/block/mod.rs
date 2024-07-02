@@ -19,6 +19,7 @@ use crate::{
     },
 };
 use anyhow::{anyhow, bail};
+use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::{ffi::OsStr, path::Path};
 
@@ -42,7 +43,7 @@ pub struct BlockWithoutHeight {
     pub global_slot_since_genesis: u32,
 }
 
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, Decode, Encode)]
 pub struct BlockHash(pub String);
 
 impl BlockHash {
