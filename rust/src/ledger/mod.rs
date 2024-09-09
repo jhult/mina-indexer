@@ -123,6 +123,7 @@ impl Ledger {
     /// Apply a ledger diff to a mutable ledger
     pub fn _apply_diff(&mut self, diff: &LedgerDiff) -> anyhow::Result<()> {
         for acct_diff in diff.account_diffs.iter().flatten() {
+            println!("account diff: {acct_diff:?}");
             self._apply_account_diff(acct_diff)?;
         }
         Ok(())
@@ -374,13 +375,15 @@ mod tests {
                 }),
                 AccountDiff::Payment(PaymentDiff {
                     amount,
-                    public_key: PublicKey::default(),
+                    public_key: public_key.clone(),
                     update_type: UpdateType::Debit(None),
                 }),
             ]],
         };
         let ledger = Ledger { accounts }.apply_diff(&ledger_diff).unwrap();
         let account_after = ledger.accounts.get(&public_key).unwrap();
+        println!("account_after: {account_after:?}");
+
         assert_eq!(
             *account_after,
             Account {

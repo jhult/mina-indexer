@@ -214,18 +214,14 @@ impl Account {
     /// # Returns
     ///
     /// A new `Account` instance with the updated balance.
-    pub fn coinbase(self, amount: Amount) -> Self {
-        Account {
-            balance: self.balance + amount,
-            ..self
-        }
+    pub fn coinbase(mut self, amount: Amount) -> Self {
+        self.balance = self.balance + amount;
+        self
     }
 
-    pub fn coinbase_unapply(self, amount: Amount) -> Self {
-        Account {
-            balance: self.balance - amount,
-            ..self
-        }
+    pub fn coinbase_unapply(mut self, amount: Amount) -> Self {
+        self.balance = self.balance - amount;
+        self
     }
 
     /// Updates the account's state based on applying a payment.
@@ -242,15 +238,7 @@ impl Account {
     pub fn payment(self, payment_diff: &PaymentDiff) -> Self {
         match payment_diff.update_type {
             UpdateType::Credit => self.credit(payment_diff.amount),
-            UpdateType::Debit(nonce) => self
-                .clone()
-                .debit(payment_diff.amount, nonce)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "{:#?}. Current balance is {:#?} for account {:#?}",
-                        payment_diff, self.balance.0, self.public_key.0
-                    )
-                }),
+            UpdateType::Debit(nonce) => self.debit(payment_diff.amount, nonce),
         }
     }
 
@@ -264,17 +252,17 @@ impl Account {
     /// # Returns
     ///
     /// A new `Account` instance with the updated state.
-    pub fn payment_unapply(self, payment_diff: &PaymentDiff) -> Self {
+    pub fn payment_unapply(mut self, payment_diff: &PaymentDiff) -> Self {
         match payment_diff.update_type {
-            UpdateType::Credit => Account {
-                balance: self.balance - payment_diff.amount,
-                ..self
-            },
-            UpdateType::Debit(nonce) => Self {
-                balance: self.balance + payment_diff.amount,
-                nonce: nonce.or(self.nonce).map(|n| n - 1),
-                ..self
-            },
+            UpdateType::Credit => {
+                self.balance = self.balance - payment_diff.amount;
+                self
+            }
+            UpdateType::Debit(nonce) => {
+                self.balance = self.balance + payment_diff.amount;
+                self.nonce = nonce.or(self.nonce).map(|n| n - 1);
+                self
+            }
         }
     }
 
@@ -293,15 +281,17 @@ impl Account {
     /// An `Option` containing the new `Account` state if the debit was
     /// successful, or `None` if the debit amount exceeds the current
     /// balance.
-    fn debit(self, amount: Amount, nonce: Option<Nonce>) -> Option<Self> {
+    fn debit(mut self, amount: Amount, nonce: Option<Nonce>) -> Self {
         if amount > self.balance {
-            None
+            println!(
+                "debit of {amount:?} to {} with balance {}",
+                self.public_key, self.balance.0
+            );
+            panic!("{self} - Failed to debit {amount:#?}",)
         } else {
-            Some(Account {
-                balance: self.balance - amount,
-                nonce: nonce.or(self.nonce),
-                ..self
-            })
+            self.balance = self.balance - amount;
+            self.nonce = nonce.or(self.nonce);
+            self
         }
     }
 
@@ -316,11 +306,13 @@ impl Account {
     /// # Returns
     ///
     /// A new `Account` instance with the updated balance.
-    fn credit(self, amount: Amount) -> Self {
-        Account {
-            balance: self.balance + amount,
-            ..self
-        }
+    fn credit(mut self, amount: Amount) -> Self {
+        println!(
+            "credit of {amount:?} to {} with balance {}",
+            self.public_key, self.balance.0
+        );
+        self.balance = self.balance + amount;
+        self
     }
 
     /// Updates the account's delegate and nonce based on a Stake Delegation
@@ -336,12 +328,10 @@ impl Account {
     /// # Returns
     ///
     /// A new `Account` instance with the updated delegate and nonce.
-    pub fn delegation(self, delegate: PublicKey, updated_nonce: Nonce) -> Self {
-        Account {
-            delegate,
-            nonce: Some(updated_nonce),
-            ..self
-        }
+    pub fn delegation(mut self, delegate: PublicKey, updated_nonce: Nonce) -> Self {
+        self.delegate = delegate;
+        self.nonce = Some(updated_nonce);
+        self
     }
 
     /// Updates the account's nonce based on a failed transaction.
@@ -356,23 +346,20 @@ impl Account {
     /// # Returns
     ///
     /// A new `Account` instance with the updated nonce.
-    pub fn failed_transaction(self, updated_nonce: Nonce) -> Self {
-        Account {
-            nonce: Some(updated_nonce),
-            ..self
-        }
+    pub fn failed_transaction(mut self, updated_nonce: Nonce) -> Self {
+        self.nonce = Some(updated_nonce);
+        self
     }
 
-    pub fn failed_transaction_unapply(self, nonce: Option<Nonce>) -> Self {
-        Account { nonce, ..self }
+    pub fn failed_transaction_unapply(mut self, nonce: Option<Nonce>) -> Self {
+        self.nonce = nonce;
+        self
     }
 
-    pub fn delegation_unapply(self, delegate: PublicKey, nonce: Option<Nonce>) -> Self {
-        Account {
-            delegate,
-            nonce,
-            ..self
-        }
+    pub fn delegation_unapply(mut self, delegate: PublicKey, nonce: Option<Nonce>) -> Self {
+        self.delegate = delegate;
+        self.nonce = nonce;
+        self
     }
 
     /// Apply an account diff to an account
