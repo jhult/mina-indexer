@@ -1,4 +1,6 @@
-#! /bin/sh
+#!/usr/bin/env -S ruby -w
+
+# -*- mode: ruby -*-
 
 set -eu
 
