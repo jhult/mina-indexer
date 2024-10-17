@@ -428,15 +428,6 @@ fn process_struct_fields(workspace_dir: &Path) -> bool {
         let fields = find_public_struct_fields(&original_content);
 
         for (struct_name, field_name) in fields {
-            // Check if the struct is public and in a public module
-            if is_public_api(&original_content, &struct_name) {
-                println!(
-                    "Skipping field {} in struct {} as it's part of the public API",
-                    field_name, struct_name
-                );
-                continue;
-            }
-
             if !find_field_usages(&struct_name, &field_name, workspace_dir, &file_path) {
                 let field_re = Regex::new(&format!(r"(?m)^\s*pub\s+{}:", field_name)).unwrap();
                 if let Some(mat) = field_re.find(&modified_content) {
@@ -473,11 +464,6 @@ fn process_struct_fields(workspace_dir: &Path) -> bool {
     }
 
     changes_made
-}
-
-fn is_public_api(content: &str, struct_name: &str) -> bool {
-    let struct_re = Regex::new(&format!(r"pub\s+struct\s+{}", struct_name)).unwrap();
-    struct_re.is_match(content)
 }
 
 fn main() {
