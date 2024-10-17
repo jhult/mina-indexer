@@ -32,15 +32,11 @@ pub struct TransactionSnarkWorkJson {
     pub prover: PublicKeyJson,
 }
 
-pub type LedgerProofV1 = Versioned<TransactionSnarkV1, 1>;
-
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct TransactionSnark {
     pub statement: StatementV1,
     pub transaction_snark_proof: ProtocolStateProofV1,
 }
-
-pub type TransactionSnarkV1 = Versioned<TransactionSnark, 1>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, AutoFrom)]
 #[auto_from(TransactionSnark)]

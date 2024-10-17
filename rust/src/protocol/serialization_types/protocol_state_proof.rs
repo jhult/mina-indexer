@@ -278,8 +278,6 @@ pub struct ProofOpenings {
     pub evals: ProofOpeningsEvals,
 }
 
-pub type ProofOpeningsV1 = Versioned<ProofOpenings, 1>;
-
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, AutoFrom)]
 #[auto_from(ProofOpenings)]
 pub struct ProofOpeningsJson {

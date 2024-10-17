@@ -27,9 +27,6 @@ pub struct StagedLedgerDiff {
     pub diff: StagedLedgerDiffTupleV1,
 }
 
-/// Top level wrapper type for a StagedLedgerDiff (v1)
-pub type StagedLedgerDiffV1 = Versioned<StagedLedgerDiff, 1>;
-
 /// Top level wrapper type for a StagedLedgerDiff (json)
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, AutoFrom)]
 #[auto_from(StagedLedgerDiff)]
@@ -279,9 +276,6 @@ impl<'de> Deserialize<'de> for SignedCommandMemoJson {
         Ok(Self(decoded.into_iter().skip(1).collect()))
     }
 }
-
-// FIXME: No test coverage yet
-pub type SnappCommand = Versioned2<(), 1, 1>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum TransactionStatus {
