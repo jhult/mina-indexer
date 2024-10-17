@@ -1,4 +1,4 @@
-use mina_indexer::{
+use crate::{
     block::genesis::GenesisBlock,
     chain::Network,
     constants::MAINNET_ACCOUNT_CREATION_FEE,

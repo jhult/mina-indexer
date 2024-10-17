@@ -1,6 +1,5 @@
 use crate::helpers::setup_new_db_dir;
-use anyhow::Context;
-use mina_indexer::{
+use crate::{
     block::{parser::BlockParser, precomputed::PcbVersion},
     constants::*,
     ledger::{
@@ -13,6 +12,7 @@ use mina_indexer::{
     store::IndexerStore,
     utility::store::{balance_key_prefix, pk_key_prefix},
 };
+use anyhow::Context;
 use std::{mem::size_of, path::PathBuf, sync::Arc};
 
 #[tokio::test]

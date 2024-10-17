@@ -4,11 +4,7 @@
 #[cfg(all(test, feature = "browser"))]
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
-use crate::{
-    block_path_test, block_path_test_batch, block_sum_path_test,
-    protocol::fixtures::test::TEST_BLOCKS,
-};
-use mina_indexer::protocol::{
+use crate::protocol::{
     bin_prot::*,
     serialization_types::{
         blockchain_state::{BlockchainStateV1, NonSnarkStagedLedgerHashV1, StagedLedgerHashV1},
@@ -49,6 +45,10 @@ use mina_indexer::protocol::{
             UserCommandWithStatusV1,
         },
     },
+};
+use crate::{
+    block_path_test, block_path_test_batch, block_sum_path_test,
+    protocol::fixtures::test::TEST_BLOCKS,
 };
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};

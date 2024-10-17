@@ -1,5 +1,5 @@
 use crate::helpers::setup_new_db_dir;
-use mina_indexer::{
+use crate::{
     block::{vrf_output::VrfOutput, Block, BlockHash},
     event::{db::*, store::*, witness_tree::*, *},
     ledger::LedgerHash,

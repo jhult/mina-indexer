@@ -1,5 +1,5 @@
 use crate::helpers::setup_new_db_dir;
-use mina_indexer::{
+use crate::{
     block::parser::BlockParser,
     constants::*,
     event::{db::*, store::EventStore, IndexerEvent},

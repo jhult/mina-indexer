@@ -30,3 +30,5 @@ database/
 
 # tier3 blocks
 files-to-fetch.list
+
+rust/struct_visibility_modifier/target/

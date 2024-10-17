@@ -1,4 +1,4 @@
-use mina_indexer::{
+use crate::{
     block::parser::BlockParser,
     ledger::{diff::LedgerDiff, public_key::PublicKey, Ledger},
 };

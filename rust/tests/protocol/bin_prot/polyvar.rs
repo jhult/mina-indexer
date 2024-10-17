@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::protocol::bin_prot::polyvar::TestPolyvar::{None, One, Two};
-use mina_indexer::protocol::bin_prot::{error::Error, to_writer, Deserializer};
+use crate::protocol::bin_prot::{error::Error, to_writer, Deserializer};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]

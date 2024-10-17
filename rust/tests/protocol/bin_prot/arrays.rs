@@ -1,5 +1,5 @@
+use crate::protocol::bin_prot::to_writer;
 use crate::protocol::bin_prot::{common, common::print_janestreet_byte_array};
-use mina_indexer::protocol::bin_prot::to_writer;
 use std::fmt::Write;
 
 const MAX_BYTES: usize = 11;

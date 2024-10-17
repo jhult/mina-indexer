@@ -20,6 +20,12 @@ pub struct GlobalSlot {
 /// A global slot (v1)
 pub type GlobalSlotV1 = Versioned2<GlobalSlot, 1, 1>;
 
+/// Jonathan
+pub struct Jonathan {
+    /// A slot number
+    pub slot_number: U32Json,
+}
+
 /// A global slot (json)
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, AutoFrom)]
 #[auto_from(GlobalSlot)]

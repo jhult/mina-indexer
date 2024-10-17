@@ -6,8 +6,8 @@ wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
 #[cfg(test)]
 mod tests {
+    use crate::protocol::serialization_types::common::{ByteVecJson, CharJson};
     use crate::protocol::test_fixtures::JSON_TEST_BLOCKS;
-    use mina_indexer::protocol::serialization_types::common::{ByteVecJson, CharJson};
     use wasm_bindgen_test::*;
 
     #[wasm_bindgen_test]
