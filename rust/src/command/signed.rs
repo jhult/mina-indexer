@@ -353,7 +353,6 @@ impl From<SignedCommand> for serde_json::Value {
         let mut object = Map::new();
         object.insert("payload".into(), payload_json(&value.0));
         object.insert("signer".into(), signer(&value.0));
-        object.insert("signature".into(), signature(&value.0));
 
         Value::Object(object)
     }
@@ -452,11 +451,6 @@ impl std::fmt::Debug for SignedCommandWithStateHash {
 fn signer(value: &mina_rs::SignedCommandV1) -> serde_json::Value {
     let pk: PublicKey = value.t.t.signer.0.t.to_owned().into();
     serde_json::Value::String(pk.0)
-}
-
-fn signature(value: &mina_rs::SignedCommandV1) -> serde_json::Value {
-    let sig: Signature = value.t.t.signature.to_owned().into();
-    serde_json::Value::String(sig.to_string())
 }
 
 fn payload_json(value: &mina_rs::SignedCommandV1) -> serde_json::Value {

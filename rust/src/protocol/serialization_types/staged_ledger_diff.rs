@@ -9,7 +9,7 @@
 
 use crate::protocol::serialization_types::{
     common::{AmountV1, DecimalJson, ExtendedU32, ExtendedU64_2, ExtendedU64_3, U32Json, U64Json},
-    signatures::{PublicKey2V1, PublicKeyJson, PublicKeyV1, SignatureJson, SignatureV1},
+    signatures::{PublicKey2V1, PublicKeyJson, PublicKeyV1},
     snark_work::{TransactionSnarkWorkJson, TransactionSnarkWorkV1},
     version_bytes,
 };
@@ -107,7 +107,6 @@ impl_mina_enum_json_serde!(UserCommandJson, UserCommandJsonProxy);
 pub struct SignedCommand {
     pub payload: SignedCommandPayloadV1,
     pub signer: PublicKey2V1,
-    pub signature: SignatureV1,
 }
 
 pub type SignedCommandV1 = Versioned2<SignedCommand, 1, 1>;
@@ -117,7 +116,6 @@ pub type SignedCommandV1 = Versioned2<SignedCommand, 1, 1>;
 pub struct SignedCommandJson {
     pub payload: SignedCommandPayloadJson,
     pub signer: PublicKeyJson,
-    pub signature: SignatureJson,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]

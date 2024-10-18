@@ -6,10 +6,7 @@
 use crate::protocol::{
     bin_prot,
     serialization_types::{
-        errors::{
-            Error,
-            Error::{Base58DecodeError, BinProtError},
-        },
+        errors::{Error, Error::Base58DecodeError},
         version_bytes,
     },
 };
