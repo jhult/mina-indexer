@@ -11,6 +11,10 @@ pub enum Error {
     #[error("Error decoding base58 string: {0}")]
     Base58DecodeError(#[from] bs58::decode::Error),
 
+    /// Error serde-ing bincode bytes
+    #[error("BincodeError: {0}")]
+    BincodeError(#[from] bincode::error::DecodeError),
+
     /// Custom error
     #[error("Custom error: {0}")]
     Custom(String),

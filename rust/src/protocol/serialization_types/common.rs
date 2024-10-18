@@ -3,13 +3,11 @@
 
 //! Some basic versioned types used throughout
 
-use crate::protocol::{
-    bin_prot,
-    serialization_types::{
-        errors::{Error, Error::Base58DecodeError},
-        version_bytes,
-    },
+use crate::protocol::serialization_types::{
+    errors::{Error, Error::Base58DecodeError, Error::BincodeError},
+    version_bytes,
 };
+use bincode::{Decode, Encode};
 use bs58::encode::EncodeBuilder;
 use derive_more::{From, Into};
 use mina_serialization_proc_macros::AutoFrom;
@@ -275,7 +273,7 @@ where
 
 impl<const VERSION_BYTE: u8, T> Base58EncodableType<VERSION_BYTE, T>
 where
-    T: Serialize + AsRef<[u8]>,
+    T: Serialize + AsRef<[u8]> + Encode,
 {
     /// Encode inner data with version check byte into [String]
     pub fn to_base58_string(&self) -> Result<String, Error> {
@@ -297,7 +295,7 @@ impl<const VERSION_BYTE: u8, T> From<Base58EncodableType<VERSION_BYTE, T>> for (
 
 impl<const VERSION_BYTE: u8, T> Serialize for Base58EncodableType<VERSION_BYTE, T>
 where
-    T: Serialize + AsRef<[u8]>,
+    T: Serialize + AsRef<[u8]> + bincode::Encode,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -324,13 +322,15 @@ where
     }
 }
 
+const BINCODE_DEFAULT: bincode::config::Configuration = bincode::config::standard();
+
 /// A wrapper of versioned type that is base58 encodable with an version byte
-#[derive(Debug, Clone, Eq, PartialEq, derive_more::From)]
+#[derive(Debug, Clone, Eq, PartialEq, derive_more::From, Encode, Decode)]
 pub struct Base58EncodableVersionedType<const VERSION_BYTE: u8, T>(pub T);
 
 impl<'de, const VERSION_BYTE: u8, T> Base58EncodableVersionedType<VERSION_BYTE, T>
 where
-    T: Deserialize<'de>,
+    T: Deserialize<'de> + bincode::Decode,
 {
     /// Decode input base58 encoded bytes into [Base58EncodableVersionedType]
     pub fn from_base58(input: impl AsRef<[u8]>) -> Result<Self, Error> {
@@ -339,14 +339,16 @@ where
             .into_vec()
             .map_err(Base58DecodeError)?;
         // skip the version check byte
-        let data: T = bin_prot::from_reader_strict(&bytes[1..]).map_err(BinProtError)?;
+        let data: T = bincode::decode_from_slice(&bytes[1..], BINCODE_DEFAULT)
+            .map_err(BincodeError)?
+            .0;
         Ok(Self(data))
     }
 }
 
 impl<const VERSION_BYTE: u8, T> Base58EncodableVersionedType<VERSION_BYTE, T>
 where
-    T: Serialize,
+    T: Serialize + bincode::Encode,
 {
     /// Encode inner data with version check byte into [String]
     pub fn to_base58_string(&self) -> Result<String, Error> {
@@ -357,9 +359,8 @@ where
     /// Encode inner data with version check byte into [EncodeBuilder]
     pub fn to_base58_builder(
         &self,
-    ) -> Result<EncodeBuilder<'static, Vec<u8>>, bin_prot::error::Error> {
-        let mut buf = Vec::new();
-        bin_prot::to_writer(&mut buf, &self.0)?;
+    ) -> Result<EncodeBuilder<'static, Vec<u8>>, bincode::error::EncodeError> {
+        let buf = bincode::encode_to_vec(&self.0, BINCODE_DEFAULT)?;
         Ok(bs58::encode(buf).with_check_version(VERSION_BYTE))
     }
 }
@@ -372,7 +373,7 @@ impl<const VERSION_BYTE: u8, T> From<Base58EncodableVersionedType<VERSION_BYTE, 
 
 impl<const VERSION_BYTE: u8, T> Serialize for Base58EncodableVersionedType<VERSION_BYTE, T>
 where
-    T: Serialize,
+    T: Serialize + bincode::Encode,
 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -388,7 +389,7 @@ where
 impl<'de, const VERSION_BYTE: u8, T> Deserialize<'de>
     for Base58EncodableVersionedType<VERSION_BYTE, T>
 where
-    T: Deserialize<'de>,
+    T: Deserialize<'de> + bincode::Decode,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

@@ -1,12 +1,8 @@
 use crate::{
     command::*,
-    proof_systems::signer::signature::Signature,
-    protocol::{
-        bin_prot,
-        serialization_types::{
-            staged_ledger_diff as mina_rs,
-            version_bytes::{USER_COMMAND, V1_TXN_HASH},
-        },
+    protocol::serialization_types::{
+        staged_ledger_diff as mina_rs,
+        version_bytes::{USER_COMMAND, V1_TXN_HASH},
     },
 };
 use anyhow::bail;
