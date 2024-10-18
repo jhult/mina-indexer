@@ -6,7 +6,6 @@
 
 use crate::protocol::serialization_types::{
     common::*,
-    protocol_state_proof::{ProtocolStateProofJson, ProtocolStateProofV1},
     signatures::{PublicKeyJson, PublicKeyV1},
 };
 use mina_serialization_proc_macros::AutoFrom;
@@ -35,16 +34,12 @@ pub struct TransactionSnarkWorkJson {
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct TransactionSnark {
     pub statement: StatementV1,
-    pub transaction_snark_proof: ProtocolStateProofV1,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, AutoFrom)]
 #[auto_from(TransactionSnark)]
 pub struct TransactionSnarkJson {
     pub statement: StatementJson,
-
-    #[serde(rename = "proof")]
-    pub transaction_snark_proof: ProtocolStateProofJson,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
