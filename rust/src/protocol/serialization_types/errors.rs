@@ -12,8 +12,8 @@ pub enum Error {
     Base58DecodeError(#[from] bs58::decode::Error),
 
     /// Error serde-ing bincode bytes
-    #[error("BincodeError: {0}")]
-    BincodeError(#[from] bincode::error::DecodeError),
+    #[error("SerdeError: {0}")]
+    SerdeError(#[from] serde_json::error::Error),
 
     /// Custom error
     #[error("Custom error: {0}")]

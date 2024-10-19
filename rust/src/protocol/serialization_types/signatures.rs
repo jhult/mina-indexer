@@ -5,7 +5,7 @@
 
 use crate::{
     proof_systems::signer::pubkey::CompressedPubKey,
-    protocol::serialization_types::field_and_curve_elements::{FieldElement, InnerCurveScalar},
+    protocol::serialization_types::field_and_curve_elements::FieldElement,
 };
 use mina_serialization_proc_macros::AutoFrom;
 use mina_serialization_versioned::{impl_strconv_via_json, Versioned, Versioned2};
@@ -71,10 +71,7 @@ pub struct PublicKey2V1(pub Versioned<PublicKeyV1, 1>); // with an extra version
 
 mod conversions {
     use super::*;
-    use crate::proof_systems::{
-        signer::signature::{BaseField, ScalarField, Signature},
-        FieldHelpers,
-    };
+    use crate::proof_systems::{signer::signature::BaseField, FieldHelpers};
 
     impl From<&CompressedCurvePoint> for CompressedPubKey {
         fn from(t: &CompressedCurvePoint) -> Self {
@@ -189,15 +186,6 @@ mod conversions {
     impl From<CompressedPubKey> for PublicKey2V1 {
         fn from(t: CompressedPubKey) -> Self {
             (&t).into()
-        }
-    }
-
-    fn internal_signature_to_signature(rx: &FieldElement, s: &InnerCurveScalar) -> Signature {
-        Signature {
-            rx: BaseField::from_bytes(rx)
-                .expect("Wrong number of bytes encountered when converting to BaseField"),
-            s: ScalarField::from_bytes(s)
-                .expect("Wrong number of bytes encountered when converting to ScalarField"),
         }
     }
 }

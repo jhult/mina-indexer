@@ -170,7 +170,7 @@ impl SignedCommand {
     /// [TxnHash::PREFIX]
     pub fn hash_signed_command(&self) -> anyhow::Result<TxnHash> {
         let mut binprot_bytes = Vec::new();
-        bin_prot::to_writer(&mut binprot_bytes, &self.0).map_err(anyhow::Error::from)?;
+        serde_json::to_writer(&mut binprot_bytes, &self.0).map_err(anyhow::Error::from)?;
 
         let binprot_bytes_bs58 = bs58::encode(&binprot_bytes[..])
             .with_check_version(USER_COMMAND)
