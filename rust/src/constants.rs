@@ -5,8 +5,8 @@ use rust_decimal_macros::dec;
 
 // version
 
-pub const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("GIT_COMMIT_HASH"));
+pub const GIT_COMMIT_HASH: &str = "123";
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-", "123");
 
 // indexer constants
 

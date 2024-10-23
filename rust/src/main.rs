@@ -1,14 +1,46 @@
-use clap::{Parser, Subcommand};
-use log::{debug, error, info, warn, LevelFilter};
-use mina_indexer::{
+extern crate core;
+
+pub mod block;
+pub mod canonicity;
+pub mod chain;
+pub mod client;
+pub mod command;
+pub mod constants;
+pub mod event;
+pub mod ledger;
+pub mod mina_blocks;
+pub mod proof_systems;
+pub mod protocol;
+pub mod server;
+pub mod snark_work;
+pub mod state;
+pub mod store;
+pub mod unix_socket_server;
+pub mod utility;
+pub mod web;
+
+/// Jonathan
+pub struct Jonathan3 {
+    /// A slot number
+    pub slot_number2: U32Json,
+}
+
+#[cfg(target_family = "unix")]
+pub mod platform {
+    use libc::{kill, pid_t};
+
+    pub fn is_process_running(pid: pid_t) -> bool {
+        // kill(pid, 0) sends signal 0 to the process, which is a no-op check
+        // If the process exists, kill() returns 0, otherwise it returns -1
+        unsafe { kill(pid, 0) == 0 }
+    }
+}
+
+use crate::{
     block::precomputed::PcbVersion,
     chain::Network,
-    client,
     constants::*,
-    ledger::{
-        self,
-        genesis::{GenesisConstants, GenesisLedger, GenesisRoot},
-    },
+    ledger::genesis::{GenesisConstants, GenesisLedger, GenesisRoot},
     server::{
         initialize_indexer_database, start_indexer, IndexerConfiguration, InitializationMode,
     },
@@ -16,6 +48,9 @@ use mina_indexer::{
     unix_socket_server::remove_unix_socket,
     web::start_web_server,
 };
+use clap::{Parser, Subcommand};
+use log::{debug, error, info, warn, LevelFilter};
+use protocol::serialization_types::common::U32Json;
 use std::{
     fs::{self, File},
     io::Write,
@@ -585,7 +620,7 @@ fn remove_pid<P: AsRef<Path>>(database_dir: P) {
 /// * `database_dir` - A reference to the path of the database directory where
 ///   the PID file will be located.
 fn check_or_write_pid_file<P: AsRef<Path>>(database_dir: P) {
-    use mina_indexer::platform;
+    use crate::platform;
     let database_dir = database_dir.as_ref();
     let pid_path = database_dir.join("PID");
 

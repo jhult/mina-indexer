@@ -1,4 +1,4 @@
-use mina_indexer::{
+use crate::{
     block::parser::BlockParser,
     state::{ExtensionType, IndexerState},
 };

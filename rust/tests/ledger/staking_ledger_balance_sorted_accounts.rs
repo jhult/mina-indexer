@@ -1,6 +1,5 @@
 use crate::helpers::setup_new_db_dir;
-use anyhow::Context;
-use mina_indexer::{
+use crate::{
     constants::*,
     ledger::{
         genesis::{GenesisLedger, GenesisRoot},
@@ -11,6 +10,7 @@ use mina_indexer::{
     store::IndexerStore,
     utility::store::staking_ledger::split_staking_ledger_sort_key,
 };
+use anyhow::Context;
 use std::{path::PathBuf, sync::Arc};
 
 #[tokio::test]

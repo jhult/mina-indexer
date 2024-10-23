@@ -1,9 +1,9 @@
 // Copyright 2020 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::protocol::{bin_prot, bin_prot::value::layout::BinProtRule};
 use crate::{load_json_test_blocks, load_test_blocks};
 use lazy_static::lazy_static;
-use mina_indexer::protocol::{bin_prot, bin_prot::value::layout::BinProtRule};
 use serde::Deserialize;
 use std::collections::HashMap;
 

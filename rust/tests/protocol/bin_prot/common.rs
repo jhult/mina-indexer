@@ -1,7 +1,7 @@
 // Copyright 2020 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0
 
-use mina_indexer::protocol::bin_prot::{from_reader, from_reader_strict, to_writer};
+use crate::protocol::bin_prot::{from_reader, from_reader_strict, to_writer};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Write};
 

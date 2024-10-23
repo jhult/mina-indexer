@@ -3,7 +3,7 @@
 
 #[cfg(feature = "loose_deserialization")]
 mod tests {
-    use mina_indexer::protocol::bin_prot::{to_writer, BinProtRule, Deserializer, Value};
+    use crate::protocol::bin_prot::{to_writer, BinProtRule, Deserializer, Value};
     use serde::{Deserialize, Serialize};
     use std::io::Cursor;
 

@@ -22,7 +22,6 @@ use crate::protocol::{
         },
         opening_proof::{OpeningProofJson, OpeningProofV1},
         proof_evaluations::{ProofEvaluationsJson, ProofEvaluationsV1},
-        proof_messages::{ProofMessagesJson, ProofMessagesV1},
     },
 };
 use base64::{prelude::BASE64_URL_SAFE, Engine};
@@ -36,7 +35,6 @@ pub struct ProtocolStateProof {
     pub statement: ProofStatementV1,
     pub prev_evals: PrevEvalsV1,
     pub prev_x_hat: PrevXHatV1,
-    pub proof: ProofV1,
 }
 
 /// SNARK proof of the protocol state at some point in time (v1)
@@ -49,7 +47,6 @@ pub struct ProtocolStateProofJson {
     pub statement: ProofStatementJson,
     pub prev_evals: PrevEvalsJson,
     pub prev_x_hat: PrevXHatJson,
-    pub proof: ProofJson,
 }
 
 /// SNARK proof of the protocol state at some point in time (base64 json)
@@ -249,21 +246,6 @@ pub type PrevXHatV1 = Versioned<PrevXHat, 1>;
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, AutoFrom)]
 #[auto_from(PrevXHat)]
 pub struct PrevXHatJson(pub FiniteECPointJson);
-
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct Proof {
-    pub messages: ProofMessagesV1,
-    pub openings: ProofOpeningsV1,
-}
-
-pub type ProofV1 = Versioned2<Proof, 1, 1>;
-
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, AutoFrom)]
-#[auto_from(Proof)]
-pub struct ProofJson {
-    pub messages: ProofMessagesJson,
-    pub openings: ProofOpeningsJson,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ProofOpeningsEvals(pub ProofEvaluationsV1, pub ProofEvaluationsV1);

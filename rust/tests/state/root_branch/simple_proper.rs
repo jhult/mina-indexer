@@ -1,8 +1,8 @@
-use id_tree::NodeId;
-use mina_indexer::{
+use crate::{
     block::{parser::BlockParser, Block},
     state::branch::Branch,
 };
+use id_tree::NodeId;
 use std::path::PathBuf;
 
 // extend a branch with a new leaf

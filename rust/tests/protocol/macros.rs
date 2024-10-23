@@ -1,5 +1,5 @@
+use crate::protocol::bin_prot::Deserializer;
 use crate::protocol::fixtures::test::{BlockFixture, BLOCK_RULE};
-use mina_indexer::protocol::bin_prot::Deserializer;
 use serde::Deserialize;
 use std::borrow::Borrow;
 
@@ -89,7 +89,7 @@ macro_rules! bin_prot_test {
     ($($(..) * $($expected:literal) * -> $typ:expr),*)  => {
         $(
         let mut output = vec![];
-        mina_indexer::protocol::bin_prot::to_writer(&mut output, &$typ).expect("Failed writing bin-prot encoded data");
+        crate::protocol::bin_prot::to_writer(&mut output, &$typ).expect("Failed writing bin-prot encoded data");
         assert_eq!(vec![$($expected,)*], output.into_iter().rev().collect::<Vec<u8>>());
         )*
     };

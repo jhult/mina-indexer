@@ -1,4 +1,4 @@
-use mina_indexer::{
+use crate::{
     block::{parser::BlockParser, precomputed::PrecomputedBlock},
     constants::MINA_SCALE,
     ledger::{
