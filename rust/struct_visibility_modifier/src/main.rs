@@ -480,12 +480,58 @@ fn is_public_api(content: &str, struct_name: &str) -> bool {
     struct_re.is_match(content)
 }
 
+fn make_pub_crate(workspace_dir: &Path) -> bool {
+    let mut changes_made = false;
+    let protocol_dir = workspace_dir.join("src/protocol");
+
+    for file_path in find_rust_files(&protocol_dir) {
+        let original_content = fs::read_to_string(&file_path).unwrap();
+        let mut modified_content = original_content.clone();
+
+        // Replace "pub " with "pub(crate) " for structs, enums, and types
+        let re = Regex::new(r"(?m)^(\s*)pub\s+(struct|enum|type)\s+").unwrap();
+        modified_content = re
+            .replace_all(&modified_content, "${1}pub(crate) $2 ")
+            .to_string();
+
+        // Replace "pub " with "pub(crate) " for struct fields
+        let re = Regex::new(r"(?m)^(\s*)pub\s+(\w+\s*:)").unwrap();
+        modified_content = re
+            .replace_all(&modified_content, "${1}pub(crate) $2")
+            .to_string();
+
+        if modified_content != original_content {
+            fs::write(&file_path, &modified_content).unwrap();
+            let (check_passed, error_output) = run_cargo_check(workspace_dir);
+
+            if check_passed {
+                println!(
+                    "Successfully made public items pub(crate) in {:?}",
+                    file_path
+                );
+                changes_made = true;
+            } else {
+                println!(
+                    "Cannot make public items pub(crate) in {:?} due to: {}",
+                    file_path, error_output
+                );
+                fs::write(&file_path, &original_content).unwrap(); // Revert changes
+            }
+        }
+    }
+
+    changes_made
+}
+
 fn main() {
     let workspace_dir = Path::new("..");
     let mut iteration = 1;
 
     loop {
         println!("Starting iteration {}", iteration);
+
+        // Make all public items pub(crate) if possible
+        let changes_made_pub_crate = make_pub_crate(workspace_dir);
 
         // Process struct fields
         let changes_made_fields = process_struct_fields(workspace_dir);
@@ -497,7 +543,8 @@ fn main() {
         let changes_made_structs = process_items(workspace_dir, "struct");
         let changes_made_enums = process_items(workspace_dir, "enum");
 
-        if !changes_made_types
+        if !changes_made_pub_crate
+            && !changes_made_types
             && !changes_made_fields
             && !changes_made_structs
             && !changes_made_enums
