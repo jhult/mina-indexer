@@ -4,8 +4,8 @@
 
 POST {{url}}
 ```graphql
-query Transactions($limit: Int, $sort_by: TransactionSortByInput!, $query: TransactionQueryInput!) {
-  transactions(limit: $limit, sortBy: $sort_by, query: $query ) {
+{
+  transactions(limit: 50, sortBy: BLOCKHEIGHT_ASC, query: { canonical: true }) {
     blockHeight
     canonical
     amount
@@ -23,14 +23,6 @@ query Transactions($limit: Int, $sort_by: TransactionSortByInput!, $query: Trans
     receiver {
       publicKey
     }
-  }
-}
-
-variables {
-  "limit": 50,
-  "sort_by": "BLOCKHEIGHT_ASC",
-  "query": {
-    "canonical": true
   }
 }
 ```
@@ -60,20 +52,16 @@ duration < 750
 
 POST {{url}}
 ```graphql
-query Transactions($limit: Int, $sort_by: TransactionSortByInput!, $query: TransactionQueryInput!) {
-  transactions(limit: $limit, sortBy: $sort_by, query: $query ) {
+{
+  transactions(
+    limit: 50
+    sortBy: BLOCKHEIGHT_DESC
+    query: { canonical: true }
+  ) {
     blockHeight
     canonical
     memo
     hash
-  }
-}
-
-variables {
-  "limit": 50,
-  "sort_by": "BLOCKHEIGHT_DESC",
-  "query": {
-    "canonical": true
   }
 }
 ```
@@ -103,8 +91,12 @@ duration < 750
 
 POST {{url}}
 ```graphql
-query Transactions($limit: Int, $sort_by: TransactionSortByInput!, $query: TransactionQueryInput!) {
-  transactions(limit: $limit, sortBy: $sort_by, query: $query ) {
+{
+  transactions(
+    limit: 50
+    sortBy: BLOCKHEIGHT_DESC
+    query: { blockHeight: 11 }
+  ) {
     blockHeight
     canonical
     amount
@@ -122,14 +114,6 @@ query Transactions($limit: Int, $sort_by: TransactionSortByInput!, $query: Trans
     receiver {
       publicKey
     }
-  }
-}
-
-variables {
-  "limit": 50,
-  "sort_by": "BLOCKHEIGHT_DESC",
-  "query": {
-    "blockHeight": 11
   }
 }
 ```
@@ -163,8 +147,15 @@ duration < 750
 
 POST {{url}}
 ```graphql
-query Transactions($limit: Int, $sort_by: TransactionSortByInput!, $query: TransactionQueryInput!) {
-  transactions(limit: $limit, sortBy: $sort_by, query: $query ) {
+{
+  transactions(
+    limit: 50
+    sortBy: BLOCKHEIGHT_DESC
+    query: {
+      from: "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy"
+      canonical: true
+    }
+  ) {
     blockHeight
     canonical
     from
@@ -172,15 +163,6 @@ query Transactions($limit: Int, $sort_by: TransactionSortByInput!, $query: Trans
     hash
     amount
     fee
-  }
-}
-
-variables {
-  "limit": 50,
-  "sort_by": "BLOCKHEIGHT_DESC",
-  "query": {
-    "from": "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy",
-    "canonical": true
   }
 }
 ```
@@ -216,8 +198,15 @@ duration < 750
 
 POST {{url}}
 ```graphql
-query Transactions($limit: Int, $sort_by: TransactionSortByInput!, $query: TransactionQueryInput!) {
-  transactions(limit: $limit, sortBy: $sort_by, query: $query ) {
+{
+  transactions(
+    limit: 50
+    sortBy: BLOCKHEIGHT_DESC
+    query: {
+      to: "B62qjYanmV7y9njVeH5UHkz3GYBm7xKir1rAnoY4KsEYUGLMiU45FSM"
+      canonical: true
+    }
+  ) {
     blockHeight
     canonical
     from
@@ -225,15 +214,6 @@ query Transactions($limit: Int, $sort_by: TransactionSortByInput!, $query: Trans
     hash
     amount
     fee
-  }
-}
-
-variables {
-  "limit": 50,
-  "sort_by": "BLOCKHEIGHT_DESC",
-  "query": {
-    "to": "B62qjYanmV7y9njVeH5UHkz3GYBm7xKir1rAnoY4KsEYUGLMiU45FSM",
-    "canonical": true
   }
 }
 ```
@@ -265,12 +245,12 @@ duration < 750
 
 POST {{url}}
 ```graphql
-query TransactionsQuery(
-  $limit: Int = 10
-  $sort_by: TransactionSortByInput!
-  $query: TransactionQueryInput!
-) {
-  transactions(limit: $limit, sortBy: $sort_by, query: $query) {
+{
+  transactions(
+    limit: 100
+    sortBy: BLOCKHEIGHT_ASC
+    query: { blockHeight_lte: 100, canonical: true }
+  ) {
     blockHeight
     failureReason
     canonical
@@ -291,15 +271,6 @@ query TransactionsQuery(
     }
   }
 }
-
-variables {
-  "limit": 100,
-  "sort_by": "BLOCKHEIGHT_ASC",
-  "query": {
-    "blockHeight_lte": 100,
-    "canonical": true
-  }
-}
 ```
 HTTP 200
 [Asserts]
@@ -310,29 +281,23 @@ jsonpath "$.data.transactions" count == 100
 
 POST {{url}}
 ```graphql
-query TransactionsQuery(
-  $limit: Int = 10
-  $sort_by: TransactionSortByInput!
-  $query: TransactionQueryInput!
-) {
-  transactions(limit: $limit, sortBy: $sort_by, query: $query) {
+{
+  transactions(
+    limit: 1
+    sortBy: BLOCKHEIGHT_DESC
+    query: {
+      canonical: true
+      block: {
+        stateHash: "3NLNyQC4XgQX2Q9H7fC2UxFZKY4xwwUZop8jVR24SWYNNE93FsnS"
+      }
+    }
+  ) {
     hash
     blockHeight
     canonical
     block {
       stateHash
     }
-  }
-}
-
-variables {
-  "limit": 1,
-  "sort_by": "BLOCKHEIGHT_DESC",
-  "query": {
-      "canonical": true,
-      "block": {
-          "stateHash": "3NLNyQC4XgQX2Q9H7fC2UxFZKY4xwwUZop8jVR24SWYNNE93FsnS"
-      }
   }
 }
 ```
@@ -351,12 +316,15 @@ duration < 750
 
 POST {{url}}
 ```graphql
-query TransactionsQueryDuplicate(
-  $limit: Int = 10
-  $sort_by: TransactionSortByInput!
-  $query: TransactionQueryInput!
-) {
-  transactions(limit: $limit, sortBy: $sort_by, query: $query) {
+{
+  transactions(
+    limit: 100
+    sortBy: BLOCKHEIGHT_DESC
+    query: {
+      from: "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy"
+      canonical: true
+    }
+  ) {
     blockHeight
     failureReason
     canonical
@@ -375,15 +343,6 @@ query TransactionsQueryDuplicate(
     receiver {
       publicKey
     }
-  }
-}
-
-variables {
-  "limit": 100,
-  "sort_by": "BLOCKHEIGHT_DESC",
-  "query": {
-    "from": "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy",
-    "canonical": true
   }
 }
 ```
@@ -412,7 +371,9 @@ jsonpath "$.data.transactions[99].from" == "B62qre3erTHfzQckNuibViWQGyyKwZseztqr
 POST {{url}}
 ```graphql
 {
-  transactions(query: {hash: "CkpZrxGwdxH2CL8wGTF3B9BgJcc5xyfiF8iyzNvTYMALccvmNcNSN"} ) {
+  transactions(
+    query: { hash: "CkpZrxGwdxH2CL8wGTF3B9BgJcc5xyfiF8iyzNvTYMALccvmNcNSN" }
+  ) {
     blockHeight
     canonical
     hash
@@ -451,10 +412,15 @@ duration < 750
 POST {{url}}
 ```graphql
 query TransactionsNonce {
-  transactions(query: {canonical: true, from: "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy"}) {
+  transactions(
+    query: {
+      canonical: true
+      from: "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy"
+    }
+  ) {
     nonce
     blockHeight
-  }  
+  }
 }
 ```
 HTTP 200
@@ -492,11 +458,10 @@ POST {{url}}
 ```graphql
 query TransactionsAppliedFailed {
   transactions(
-    limit: 20,
-    sortBy: BLOCKHEIGHT_ASC,
-    query: {
-      from: "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy"
-    }) {
+    limit: 20
+    sortBy: BLOCKHEIGHT_ASC
+    query: { from: "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy" }
+  ) {
     nonce
     blockHeight
     failureReason
@@ -504,11 +469,10 @@ query TransactionsAppliedFailed {
   }
 
   applied: transactions(
-    limit: 20,
-    sortBy: BLOCKHEIGHT_ASC,
-    query: {
-      isApplied: true
-    }) {
+    limit: 20
+    sortBy: BLOCKHEIGHT_ASC
+    query: { isApplied: true }
+  ) {
     nonce
     blockHeight
     isApplied
@@ -552,16 +516,15 @@ POST {{url}}
 ```graphql
 query TransactionsFailureReason {
   transactions(
-    limit: 5,
-    sortBy: BLOCKHEIGHT_ASC,
-    query: {
-      failureReason: "Amount_insufficient_to_create_account"
-    }) {
+    limit: 5
+    sortBy: BLOCKHEIGHT_ASC
+    query: { failureReason: "Amount_insufficient_to_create_account" }
+  ) {
     nonce
     blockHeight
     failureReason
     hash
-  }  
+  }
 }
 ```
 HTTP 200
@@ -606,13 +569,14 @@ POST {{url}}
 ```graphql
 query TransactionsDateTimeBound {
   prev: transactions(
-    limit: 1,
-    sortBy: DATETIME_DESC,
+    limit: 1
+    sortBy: DATETIME_DESC
     query: {
-      canonical: true,
-      kind: "PAYMENT",
+      canonical: true
+      kind: "PAYMENT"
       dateTimeLte: "2021-03-17T00:24:00.000Z"
-    }) {
+    }
+  ) {
     nonce
     blockHeight
     globalSlot
@@ -622,13 +586,14 @@ query TransactionsDateTimeBound {
   }
 
   next: transactions(
-    limit: 1,
-    sortBy: DATETIME_ASC,
+    limit: 1
+    sortBy: DATETIME_ASC
     query: {
-      canonical: true,
-      kind: "PAYMENT",
+      canonical: true
+      kind: "PAYMENT"
       dateTimeGte: "2021-03-17T00:30:00.000Z"
-    }) {
+    }
+  ) {
     nonce
     blockHeight
     globalSlot

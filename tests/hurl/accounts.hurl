@@ -4,8 +4,12 @@
 
 POST {{url}}
 ```graphql
-query Accounts {
-  accounts(query: {publicKey: "B62qj8KB2fk59NkV4VuoTkVXHjw8VJzC3ybKrWo7zuDC9xTiWXPygEe" }) {
+{
+  accounts(
+    query: {
+      publicKey: "B62qj8KB2fk59NkV4VuoTkVXHjw8VJzC3ybKrWo7zuDC9xTiWXPygEe"
+    }
+  ) {
     publicKey
     balance
     username
@@ -38,8 +42,12 @@ duration < 100
 
 POST {{url}}
 ```graphql
-query Accounts {
-  accounts(query: {delegate: "B62qj8KB2fk59NkV4VuoTkVXHjw8VJzC3ybKrWo7zuDC9xTiWXPygEe" }) {
+{
+  accounts(
+    query: {
+      delegate: "B62qj8KB2fk59NkV4VuoTkVXHjw8VJzC3ybKrWo7zuDC9xTiWXPygEe"
+    }
+  ) {
     publicKey
   }
 }
@@ -61,15 +69,18 @@ jsonpath "$.data.accounts[6].publicKey" == "B62qj8KB2fk59NkV4VuoTkVXHjw8VJzC3ybK
 
 duration < 200
 
-
 #
 # Account public key timing query
 #
 
 POST {{url}}
 ```graphql
-query Accounts {
-  accounts(query: {publicKey: "B62qoTaYnDYrtmver4jnkgJbFU6iohjtALTU4ebf4yCKrxFFHd9Dimh" }) {
+{
+  accounts(
+    query: {
+      publicKey: "B62qoTaYnDYrtmver4jnkgJbFU6iohjtALTU4ebf4yCKrxFFHd9Dimh"
+    }
+  ) {
     publicKey
     balance
     username
@@ -115,8 +126,12 @@ duration < 750
 
 POST {{url}}
 ```graphql
-query Accounts {
-  accounts(query: {publicKey: "B62qqE5R5pJDUjPrKZMtTkPKUPL27kwNZ1sHkZaowxSLosZvLudt3kW"}) {
+{
+  accounts(
+    query: {
+      publicKey: "B62qqE5R5pJDUjPrKZMtTkPKUPL27kwNZ1sHkZaowxSLosZvLudt3kW"
+    }
+  ) {
     publicKey
     pk_epoch_num_blocks
     pk_total_num_blocks
@@ -142,8 +157,12 @@ duration < 750
 
 POST {{url}}
 ```graphql
-query Accounts {
-  accounts(query: {publicKey: "B62qrCz3ehCqi8Pn8y3vWC9zYEB9RKsidauv15DeZxhzkxL3bKeba5h"}) {
+{
+  accounts(
+    query: {
+      publicKey: "B62qrCz3ehCqi8Pn8y3vWC9zYEB9RKsidauv15DeZxhzkxL3bKeba5h"
+    }
+  ) {
     publicKey
     pk_epoch_num_snarks
     pk_total_num_snarks
@@ -169,8 +188,12 @@ duration < 750
 
 POST {{url}}
 ```graphql
-query Accounts {
-  accounts(query: {publicKey: "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy"}) {
+{
+  accounts(
+    query: {
+      publicKey: "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy"
+    }
+  ) {
     publicKey
     pk_epoch_num_user_commands
     pk_total_num_user_commands
@@ -196,14 +219,21 @@ duration < 750
 
 POST {{url}}
 ```graphql
-query Accounts {
-  account0: accounts(query: {publicKey: "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy"}) {
+{
+  account0: accounts(
+    query: {
+      publicKey: "B62qre3erTHfzQckNuibViWQGyyKwZseztqrjPZBv6SQF384Rg6ESAy"
+    }
+  ) {
     publicKey
     pk_epoch_num_internal_commands
     pk_total_num_internal_commands
   }
-
-  account1: accounts(query: {publicKey: "B62qrdhG66vK71Jbdz6Xs7cnDxQ8f6jZUFvefkp3pje4EejYUTvotGP"}) {
+  account1: accounts(
+    query: {
+      publicKey: "B62qrdhG66vK71Jbdz6Xs7cnDxQ8f6jZUFvefkp3pje4EejYUTvotGP"
+    }
+  ) {
     publicKey
     pk_epoch_num_internal_commands
     pk_total_num_internal_commands
@@ -232,7 +262,6 @@ duration < 500
 #
 # Account default (balance descending) query
 #
-
 
 POST {{url}}
 ```graphql
@@ -285,11 +314,10 @@ duration < 750
 # Account balance descending query
 #
 
-
 POST {{url}}
 ```graphql
 {
-  accounts(sortBy: "BALANCE_DESC") {
+  accounts(sortBy: BALANCE_DESC) {
     publicKey
     balance
     username
