@@ -1,8 +1,4 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
+use super::super::{events::Event, shared_publisher::SharedPublisher, Actor};
 use crate::{
     constants::POSTGRES_CONNECTION_STRING,
     stream::{
@@ -110,7 +106,7 @@ impl Actor for StakingLedgerActor {
     }
 
     async fn handle_event(&self, event: Event) {
-        if event.event_type == EventType::DoubleEntryTransaction {
+        if event.event_type == Event::DoubleEntryTransaction {
             let event_payload: DoubleEntryRecordPayload = sonic_rs::from_str(&event.payload).unwrap();
             if event_payload.ledger_destination != LedgerDestination::StakingLedger {
                 return;
@@ -130,7 +126,7 @@ impl Actor for StakingLedgerActor {
                         assert_eq!(affected_rows, 1);
                         self.shared_publisher.incr_database_insert();
                         self.publish(Event {
-                            event_type: EventType::ActorHeight,
+                            event_type: Event::ActorHeight,
                             payload: sonic_rs::to_string(&ActorHeightPayload {
                                 actor: self.id(),
                                 height: event_payload.height,
@@ -222,7 +218,7 @@ mod staking_ledger_actor_tests {
 
         // Publish event
         let event = Event {
-            event_type: EventType::DoubleEntryTransaction,
+            event_type: Event::DoubleEntryTransaction,
             payload: sonic_rs::to_string(&non_staking_payload).unwrap(),
         };
 
@@ -271,7 +267,7 @@ mod staking_ledger_actor_tests {
 
         // Publish event
         let event = Event {
-            event_type: EventType::DoubleEntryTransaction,
+            event_type: Event::DoubleEntryTransaction,
             payload: sonic_rs::to_string(&staking_payload).unwrap(),
         };
 
@@ -283,7 +279,7 @@ mod staking_ledger_actor_tests {
 
         // Verify that the height was published
         let published_event = receiver.recv().await.expect("No event was published");
-        assert_eq!(published_event.event_type, EventType::ActorHeight);
+        assert_eq!(published_event.event_type, Event::ActorHeight);
 
         let payload: ActorHeightPayload = sonic_rs::from_str(&published_event.payload).expect("Failed to deserialize payload");
         assert_eq!(payload.height, staking_payload.height, "Published height should match the payload height");

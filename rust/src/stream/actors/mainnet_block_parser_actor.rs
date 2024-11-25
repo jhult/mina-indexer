@@ -1,77 +1,48 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
+use super::super::events::Event;
 use crate::{
     stream::{mainnet_block_models::MainnetBlock, payloads::MainnetBlockPayload},
     utility::extract_height_and_hash,
 };
-use async_trait::async_trait;
-use std::{
-    fs,
-    path::Path,
-    sync::{atomic::AtomicUsize, Arc},
-};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use std::{fs, path::Path};
 
-pub struct MainnetBlockParserActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-}
+pub struct MainnetBlockParserActor;
 
-impl MainnetBlockParserActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
-        Self {
-            id: "MainnetBlockParserActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
-        }
-    }
-}
-
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for MainnetBlockParserActor {
-    fn id(&self) -> String {
-        self.id.clone()
-    }
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-    async fn handle_event(&self, event: Event) {
-        if let EventType::MainnetBlockPath = event.event_type {
-            let (height, state_hash) = extract_height_and_hash(Path::new(&event.payload));
-            let file_content = fs::read_to_string(Path::new(&event.payload)).expect("Failed to read JSON file from disk");
-            let block: MainnetBlock = sonic_rs::from_str(&file_content).unwrap();
-            let block_payload = MainnetBlockPayload {
-                height: height as u64,
-                global_slot: block.get_global_slot_since_genesis(),
-                state_hash: state_hash.to_string(),
-                previous_state_hash: block.get_previous_state_hash(),
-                last_vrf_output: block.get_last_vrf_output(),
-                user_command_count: block.get_user_commands_count(),
-                snark_work_count: block.get_aggregated_snark_work().len(),
-                snark_work: block.get_aggregated_snark_work(),
-                timestamp: block.get_timestamp(),
-                coinbase_reward_nanomina: block.get_coinbase_reward_nanomina(),
-                coinbase_receiver: block.get_coinbase_receiver(),
-                global_slot_since_genesis: block.get_global_slot_since_genesis(),
-                user_commands: block.get_user_commands(),
-                fee_transfer_via_coinbase: block.get_fee_transfers_via_coinbase(),
-                fee_transfers: block.get_fee_transfers(),
-                internal_command_count: block.get_internal_command_count(),
-                excess_block_fees: block.get_excess_block_fees(),
-            };
-            self.publish(Event {
-                event_type: EventType::MainnetBlock,
-                payload: sonic_rs::to_string(&block_payload).unwrap(),
-            });
-        }
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+    async fn handle(&self, _: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        let (height, state_hash) = extract_height_and_hash(Path::new(msg));
+        let file_content = fs::read_to_string(Path::new(&event.payload)).expect("Failed to read JSON file from disk");
+        let block: MainnetBlock = sonic_rs::from_str(&file_content).unwrap();
+        let block_payload = MainnetBlockPayload {
+            height: height as u64,
+            global_slot: block.get_global_slot_since_genesis(),
+            state_hash: state_hash.to_string(),
+            previous_state_hash: block.get_previous_state_hash(),
+            last_vrf_output: block.get_last_vrf_output(),
+            user_command_count: block.get_user_commands_count(),
+            snark_work_count: block.get_snark_work_count(),
+            snark_work: block.get_aggregated_snark_work(),
+            timestamp: block.get_timestamp(),
+            coinbase_reward_nanomina: block.get_coinbase_reward_nanomina(),
+            coinbase_receiver: block.get_coinbase_receiver(),
+            global_slot_since_genesis: block.get_global_slot_since_genesis(),
+            user_commands: block.get_user_commands(),
+            fee_transfer_via_coinbase: block.get_fee_transfers_via_coinbase(),
+            fee_transfers: block.get_fee_transfers(),
+            internal_command_count: block.get_internal_command_count(),
+            excess_block_fees: block.get_excess_block_fees(),
+        };
+        state.cast(Event::MainnetBlock(block_payload));
+        Ok(())
     }
 }
 
@@ -94,7 +65,7 @@ async fn test_mainnet_block_parser_actor() -> anyhow::Result<()> {
 
     // Test block 100
     let event_100 = Event {
-        event_type: EventType::MainnetBlockPath,
+        event_type: Event::MainnetBlockPath,
         payload: block_file_100.to_string(),
     };
 
@@ -106,7 +77,7 @@ async fn test_mainnet_block_parser_actor() -> anyhow::Result<()> {
 
     // Assert that the correct MainnetBlock event is published for block 100
     if let Ok(received_event) = receiver.recv().await {
-        assert_eq!(received_event.event_type, EventType::MainnetBlock);
+        assert_eq!(received_event.event_type, Event::MainnetBlock);
 
         // Deserialize the payload and check values for block 100
         let payload: MainnetBlockPayload = sonic_rs::from_str(&received_event.payload).unwrap();
@@ -123,7 +94,7 @@ async fn test_mainnet_block_parser_actor() -> anyhow::Result<()> {
 
     // Test block 99
     let event_99 = Event {
-        event_type: EventType::MainnetBlockPath,
+        event_type: Event::MainnetBlockPath,
         payload: block_file_99.to_string(),
     };
 
@@ -132,7 +103,7 @@ async fn test_mainnet_block_parser_actor() -> anyhow::Result<()> {
 
     // Assert that the correct MainnetBlock event is published for block 99
     if let Ok(received_event) = receiver.recv().await {
-        assert_eq!(received_event.event_type, EventType::MainnetBlock);
+        assert_eq!(received_event.event_type, Event::MainnetBlock);
 
         // Deserialize the payload and check values for block 99
         let payload: MainnetBlockPayload = sonic_rs::from_str(&received_event.payload).unwrap();

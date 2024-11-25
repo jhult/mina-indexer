@@ -1,41 +1,21 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
-use crate::stream::payloads::{BlockLogPayload, GenesisBlockPayload, MainnetBlockPayload};
-use async_trait::async_trait;
-use std::sync::{atomic::AtomicUsize, Arc};
+use crate::stream::{events::Event, payloads::BlockLogPayload};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 
-pub struct BlockLogActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-}
+pub struct BlockLogActor;
 
-impl BlockLogActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
-        Self {
-            id: "BlockLogActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
-        }
-    }
-}
-
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for BlockLogActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-    async fn handle_event(&self, event: Event) {
-        match event.event_type {
-            EventType::GenesisBlock => {
-                let block_payload: GenesisBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::GenesisBlock(block_payload) => {
                 let payload = BlockLogPayload {
                     height: block_payload.height,
                     state_hash: block_payload.state_hash,
@@ -49,13 +29,9 @@ impl Actor for BlockLogActor {
                     last_vrf_output: block_payload.last_vrf_output,
                     is_berkeley_block: false,
                 };
-                self.publish(Event {
-                    event_type: EventType::BlockLog,
-                    payload: sonic_rs::to_string(&payload).unwrap(),
-                });
+                state.cast(Event::BlockLog(payload))?;
             }
-            EventType::MainnetBlock => {
-                let block_payload: MainnetBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
+            Event::MainnetBlock(block_payload) => {
                 let payload = BlockLogPayload {
                     height: block_payload.height,
                     state_hash: block_payload.state_hash,
@@ -69,36 +45,27 @@ impl Actor for BlockLogActor {
                     last_vrf_output: block_payload.last_vrf_output,
                     is_berkeley_block: false,
                 };
-                self.publish(Event {
-                    event_type: EventType::BlockLog,
-                    payload: sonic_rs::to_string(&payload).unwrap(),
-                });
+                state.cast(Event::BlockLog(payload))?;
             }
-            EventType::BerkeleyBlock => {
+            Event::BerkeleyBlock(_) => {
                 todo!("impl for berkeley block");
             }
             _ => {}
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
 #[tokio::test]
-async fn test_block_summary_actor_handle_event() {
-    use super::*;
-    use crate::stream::{
-        events::{Event, EventType},
-        payloads::{BlockLogPayload, MainnetBlockPayload},
-    };
-    // Create a shared publisher to test if events are published
-    let shared_publisher = Arc::new(SharedPublisher::new(100));
-    let actor = BlockLogActor::new(Arc::clone(&shared_publisher));
+async fn test_block_log_actor_with_mainnet_block() -> anyhow::Result<()> {
+    use crate::stream::{payloads::MainnetBlockPayload, test_utils::setup_test_actors};
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
 
-    // Create a mock MainnetBlockPayload
+    // Setup test actors
+    let actor = setup_test_actors(BlockLogActor {}).await;
+
+    // Create test payload
     let block_payload = MainnetBlockPayload {
         height: 100,
         last_vrf_output: "some_vrf_output".to_string(),
@@ -114,41 +81,64 @@ async fn test_block_summary_actor_handle_event() {
         ..Default::default()
     };
 
-    // Serialize the MainnetBlockPayload to JSON for the event payload
-    let payload_json = sonic_rs::to_string(&block_payload).unwrap();
-    let event = Event {
-        event_type: EventType::MainnetBlock,
-        payload: payload_json,
-    };
+    // Send test message and store response
+    let response = actor.call(|_| Event::MainnetBlock(block_payload), Some(Duration::from_secs(1))).await?;
 
-    // Subscribe to the shared publisher to capture published events
-    let mut receiver = shared_publisher.subscribe();
-
-    // Call handle_event to process the MainnetBlock event
-    actor.handle_event(event).await;
-
-    // Check if the BlockSummary event was published
-    if let Ok(received_event) = receiver.recv().await {
-        assert_eq!(received_event.event_type, EventType::BlockLog);
-
-        // Deserialize the payload of the BlockSummary event
-        let summary_payload: BlockLogPayload = sonic_rs::from_str(&received_event.payload).unwrap();
-
-        // Verify that the BlockSummaryPayload matches expected values
-        assert_eq!(summary_payload.height, 100);
-        assert_eq!(summary_payload.state_hash, "some_state_hash");
-        assert_eq!(summary_payload.previous_state_hash, "previous_state_hash");
-        assert_eq!(summary_payload.user_command_count, 5);
-        assert_eq!(summary_payload.snark_work_count, 3);
-        assert_eq!(summary_payload.timestamp, 1623423000);
-        assert_eq!(summary_payload.coinbase_receiver, "receiver_public_key");
-        assert_eq!(summary_payload.coinbase_reward_nanomina, 720_000_000_000);
-        assert_eq!(summary_payload.global_slot_since_genesis, 12345);
-        assert!(!summary_payload.is_berkeley_block);
-
-        // Verify that the event was marked as processed
-        assert_eq!(actor.actor_outputs().load(Ordering::SeqCst), 1);
-    } else {
-        panic!("Did not receive expected BlockSummary event from BlockSummaryActor.");
+    // Verify the response
+    match response {
+        CallResult::Success(Event::BlockLog(payload)) => {
+            assert_eq!(payload.height, 100);
+            assert_eq!(payload.state_hash, "some_state_hash");
+            assert_eq!(payload.previous_state_hash, "previous_state_hash");
+            assert_eq!(payload.user_command_count, 5);
+            assert_eq!(payload.snark_work_count, 3);
+            assert_eq!(payload.timestamp, 1623423000);
+            assert_eq!(payload.coinbase_receiver, "receiver_public_key");
+            assert_eq!(payload.coinbase_reward_nanomina, 720_000_000_000);
+            assert_eq!(payload.global_slot_since_genesis, 12345);
+            assert!(!payload.is_berkeley_block);
+        }
+        CallResult::Success(_) => panic!("Received unexpected message type"),
+        CallResult::Timeout => panic!("Call timed out"),
+        CallResult::SenderError => panic!("Call failed"),
     }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_block_log_actor_with_genesis_block() -> anyhow::Result<()> {
+    use crate::stream::{payloads::GenesisBlockPayload, test_utils::setup_test_actors};
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
+
+    // Setup test actors
+    let actor = setup_test_actors(BlockLogActor {}).await;
+
+    // Create test payload using the default genesis block
+    let genesis_block = GenesisBlockPayload::default();
+
+    // Send test message and store response
+    let response = actor.call(|_| Event::GenesisBlock(genesis_block), Some(Duration::from_secs(1))).await?;
+
+    // Verify the response
+    match response {
+        CallResult::Success(Event::BlockLog(payload)) => {
+            assert_eq!(payload.height, 1);
+            assert_eq!(payload.state_hash, "3NKeMoncuHab5ScarV5ViyF16cJPT4taWNSaTLS64Dp67wuXigPZ");
+            assert_eq!(payload.previous_state_hash, "3NLoKn22eMnyQ7rxh5pxB6vBA3XhSAhhrf7akdqS6HbAKD14Dh1d");
+            assert_eq!(payload.user_command_count, 0);
+            assert_eq!(payload.snark_work_count, 0);
+            assert_eq!(payload.timestamp, 1615939200000);
+            assert_eq!(payload.coinbase_receiver, "");
+            assert_eq!(payload.coinbase_reward_nanomina, 0);
+            assert_eq!(payload.global_slot_since_genesis, 1);
+            assert!(!payload.is_berkeley_block);
+        }
+        CallResult::Success(_) => panic!("Received unexpected message type"),
+        CallResult::Timeout => panic!("Call timed out"),
+        CallResult::SenderError => panic!("Call failed"),
+    }
+
+    Ok(())
 }

@@ -212,13 +212,13 @@ impl MainnetBlock {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct FeeTransferViaCoinbase {
     pub receiver: String,
     pub fee: f64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeeTransfer {
     pub recipient: String,
     pub fee_nanomina: u64,
@@ -268,13 +268,13 @@ pub struct CoinbaseData {
     pub fee: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct CompletedWorks {
     pub fee: String,
     pub prover: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct CompletedWorksNanomina {
     pub fee_nanomina: u64,
     pub prover: String,

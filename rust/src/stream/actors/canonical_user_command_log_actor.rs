@@ -1,64 +1,38 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
 use crate::{
     constants::TRANSITION_FRONTIER_DISTANCE,
-    stream::{canonical_items_manager::CanonicalItemsManager, payloads::*},
+    stream::{canonical_items_manager::CanonicalItemsManager, events::Event, payloads::*},
 };
-use async_trait::async_trait;
 use futures::lock::Mutex;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use std::sync::Arc;
 
 pub struct CanonicalUserCommandLogActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-    pub canonical_items_manager: Arc<Mutex<CanonicalItemsManager<CanonicalUserCommandLogPayload>>>,
+    canonical_items_manager: Arc<Mutex<CanonicalItemsManager<CanonicalUserCommandLogPayload>>>,
 }
 
-impl CanonicalUserCommandLogActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
-        Self {
-            id: "CanonicalUserCommandLogActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
-            canonical_items_manager: Arc::new(Mutex::new(CanonicalItemsManager::new((TRANSITION_FRONTIER_DISTANCE / 5usize) as u64))),
-        }
-    }
-}
-
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for CanonicalUserCommandLogActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = Self;
+    type Arguments = ();
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(Self {
+            canonical_items_manager: Arc::new(Mutex::new(CanonicalItemsManager::new((TRANSITION_FRONTIER_DISTANCE / 5usize) as u64))),
+        })
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-
-    async fn report(&self) {
-        let manager = self.canonical_items_manager.lock().await;
-        manager.report(&self.id()).await;
-    }
-
-    async fn handle_event(&self, event: Event) {
-        match event.event_type {
-            EventType::BlockCanonicityUpdate => {
-                let payload: BlockCanonicityUpdatePayload = sonic_rs::from_str(&event.payload).unwrap();
+    async fn handle(&self, ctx: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::BlockCanonicityUpdate(payload) => {
                 {
                     let manager = self.canonical_items_manager.lock().await;
                     manager.add_block_canonicity_update(payload.clone()).await;
                 }
                 {
                     let manager = self.canonical_items_manager.lock().await;
-                    for payload in manager.get_updates(payload.height).await.iter() {
-                        self.publish(Event {
-                            event_type: EventType::CanonicalUserCommandLog,
-                            payload: sonic_rs::to_string(&payload).unwrap(),
-                        });
+                    for update_payload in manager.get_updates(payload.height).await.iter() {
+                        state.cast(Event::CanonicalUserCommandLog(update_payload.clone()))?;
                     }
 
                     if let Err(e) = manager.prune().await {
@@ -66,15 +40,13 @@ impl Actor for CanonicalUserCommandLogActor {
                     }
                 }
             }
-            EventType::MainnetBlock => {
-                let event_payload: MainnetBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
+            Event::MainnetBlock(event_payload) => {
                 let manager = self.canonical_items_manager.lock().await;
                 manager
                     .add_items_count(event_payload.height, &event_payload.state_hash, event_payload.user_command_count as u64)
                     .await;
             }
-            EventType::UserCommandLog => {
-                let event_payload: UserCommandLogPayload = sonic_rs::from_str(&event.payload).unwrap();
+            Event::UserCommandLog(event_payload) => {
                 {
                     let manager = self.canonical_items_manager.lock().await;
                     manager
@@ -99,11 +71,8 @@ impl Actor for CanonicalUserCommandLogActor {
                 }
                 {
                     let manager = self.canonical_items_manager.lock().await;
-                    for payload in manager.get_updates(event_payload.height).await.iter() {
-                        self.publish(Event {
-                            event_type: EventType::CanonicalUserCommandLog,
-                            payload: sonic_rs::to_string(&payload).unwrap(),
-                        });
+                    for update_payload in manager.get_updates(event_payload.height).await.iter() {
+                        state.cast(Event::CanonicalUserCommandLog(update_payload.clone()))?;
                     }
 
                     if let Err(e) = manager.prune().await {
@@ -111,14 +80,9 @@ impl Actor for CanonicalUserCommandLogActor {
                     }
                 }
             }
-
-            _ => return,
+            _ => {}
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
@@ -126,7 +90,7 @@ impl Actor for CanonicalUserCommandLogActor {
 mod canonical_user_command_log_actor_tests {
     use super::*;
     use crate::stream::{
-        events::{Event, EventType},
+        events::Event,
         mainnet_block_models::{CommandStatus, CommandType},
         payloads::{CanonicalUserCommandLogPayload, MainnetBlockPayload, UserCommandLogPayload},
     };
@@ -148,7 +112,7 @@ mod canonical_user_command_log_actor_tests {
         };
         actor
             .handle_event(Event {
-                event_type: EventType::MainnetBlock,
+                event_type: Event::MainnetBlock,
                 payload: sonic_rs::to_string(&mainnet_block).unwrap(),
             })
             .await;
@@ -186,13 +150,13 @@ mod canonical_user_command_log_actor_tests {
         };
         actor
             .handle_event(Event {
-                event_type: EventType::UserCommandLog,
+                event_type: Event::UserCommandLog,
                 payload: sonic_rs::to_string(&user_command_1).unwrap(),
             })
             .await;
         actor
             .handle_event(Event {
-                event_type: EventType::UserCommandLog,
+                event_type: Event::UserCommandLog,
                 payload: sonic_rs::to_string(&user_command_2).unwrap(),
             })
             .await;
@@ -206,7 +170,7 @@ mod canonical_user_command_log_actor_tests {
         };
         actor
             .handle_event(Event {
-                event_type: EventType::BlockCanonicityUpdate,
+                event_type: Event::BlockCanonicityUpdate,
                 payload: sonic_rs::to_string(&update).unwrap(),
             })
             .await;
@@ -239,7 +203,7 @@ mod canonical_user_command_log_actor_tests {
         };
         actor
             .handle_event(Event {
-                event_type: EventType::MainnetBlock,
+                event_type: Event::MainnetBlock,
                 payload: sonic_rs::to_string(&mainnet_block).unwrap(),
             })
             .await;
@@ -262,7 +226,7 @@ mod canonical_user_command_log_actor_tests {
         };
         actor
             .handle_event(Event {
-                event_type: EventType::UserCommandLog,
+                event_type: Event::UserCommandLog,
                 payload: sonic_rs::to_string(&user_command).unwrap(),
             })
             .await;
@@ -276,7 +240,7 @@ mod canonical_user_command_log_actor_tests {
         };
         actor
             .handle_event(Event {
-                event_type: EventType::BlockCanonicityUpdate,
+                event_type: Event::BlockCanonicityUpdate,
                 payload: sonic_rs::to_string(&update).unwrap(),
             })
             .await;

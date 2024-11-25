@@ -1,88 +1,63 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
+use super::super::events::Event;
 use crate::{
     blockchain_tree::Height,
     constants::POSTGRES_CONNECTION_STRING,
     stream::payloads::{BlockConfirmationPayload, MainnetBlockPayload, NewAccountPayload},
 };
-use async_trait::async_trait;
 use futures::lock::Mutex;
-use std::{
-    collections::HashMap,
-    sync::{atomic::AtomicUsize, Arc},
-};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use std::{collections::HashMap, sync::Arc};
 use tokio_postgres::{Client, NoTls};
 
 pub struct NewAccountActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-    pub database_inserts: AtomicUsize,
     pub mainnet_blocks: Arc<Mutex<HashMap<Height, Vec<MainnetBlockPayload>>>>,
     pub client: Client,
 }
 
-impl NewAccountActor {
-    pub async fn new(shared_publisher: Arc<SharedPublisher>, root_node: &Option<(u64, String)>) -> Self {
+#[async_trait::async_trait]
+impl Actor for NewAccountActor {
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
         if let Ok((client, connection)) = tokio_postgres::connect(POSTGRES_CONNECTION_STRING, NoTls).await {
             tokio::spawn(async move {
                 if let Err(e) = connection.await {
                     eprintln!("connection error: {}", e);
                 }
             });
-            if let Some((height, _)) = root_node {
-                if let Err(e) = client
-                    .execute("DELETE FROM discovered_accounts WHERE height >= $1;", &[&(height.to_owned() as i64)])
-                    .await
-                {
-                    println!("Unable to drop user_commands table {:?}", e);
-                }
-            } else if let Err(e) = client.execute("DROP TABLE IF EXISTS discovered_accounts;", &[]).await {
-                println!("Unable to drop user_commands table {:?}", e);
+
+            // Handle table setup
+            if let Err(e) = client.execute("DROP TABLE IF EXISTS discovered_accounts;", &[]).await {
+                println!("Unable to drop discovered_accounts table {:?}", e);
             }
+
             if let Err(e) = client
                 .execute(
                     "CREATE TABLE IF NOT EXISTS discovered_accounts (
-                        account TEXT PRIMARY KEY NOT NULL,
-                        height BIGINT NOT NULL
-                    );
-                    ",
+                            account TEXT PRIMARY KEY NOT NULL,
+                            height BIGINT NOT NULL
+                        );",
                     &[],
                 )
                 .await
             {
                 println!("Unable to create discovered_accounts table {:?}", e);
             }
-            Self {
-                id: "NewAccountActor".to_string(),
-                shared_publisher,
-                client,
+
+            Ok(Self {
                 mainnet_blocks: Arc::new(Mutex::new(HashMap::new())),
-                events_published: AtomicUsize::new(0),
-                database_inserts: AtomicUsize::new(0),
-            }
+                client,
+            })
         } else {
-            panic!("Unable to establish connection to database")
+            Err(ActorProcessingErr::from("Unable to establish connection to database".into()))
         }
     }
-}
-#[async_trait]
-impl Actor for NewAccountActor {
-    fn id(&self) -> String {
-        self.id.clone()
-    }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-
-    async fn handle_event(&self, event: Event) {
-        match event.event_type {
-            EventType::PreExistingAccount => {
-                let account: String = event.payload.to_string();
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::PreExistingAccount(account) => {
                 // Insert the account into the `discovered_accounts` table
                 let insert_query = "INSERT INTO discovered_accounts (account, height) VALUES ($1, $2) ON CONFLICT DO NOTHING";
                 if let Err(e) = self.client.execute(insert_query, &[&account, &0_i64]).await {
@@ -91,13 +66,11 @@ impl Actor for NewAccountActor {
                     self.database_inserts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 }
             }
-            EventType::MainnetBlock => {
-                let block: MainnetBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
+            Event::MainnetBlock(block) => {
                 let mut mainnet_blocks = self.mainnet_blocks.lock().await;
                 mainnet_blocks.entry(Height(block.height)).or_insert_with(Vec::new).push(block);
             }
-            EventType::BlockConfirmation => {
-                let block_confirmation: BlockConfirmationPayload = sonic_rs::from_str(&event.payload).unwrap();
+            Event::BlockConfirmation(block_confirmation) => {
                 if block_confirmation.confirmations == 10 {
                     let mut mainnet_blocks = self.mainnet_blocks.lock().await;
 
@@ -118,17 +91,13 @@ impl Actor for NewAccountActor {
 
                                     if !account_check {
                                         // Publish a NewAccount event
-                                        let new_account_event = Event {
-                                            event_type: EventType::NewAccount,
-                                            payload: sonic_rs::to_string(&NewAccountPayload {
-                                                height: block.height,
-                                                state_hash: block.state_hash.clone(),
-                                                timestamp: block.timestamp,
-                                                account: account.clone(),
-                                            })
-                                            .unwrap(),
-                                        };
-                                        self.publish(new_account_event);
+                                        let new_account_event = Event::NewAccount(NewAccountPayload {
+                                            height: block.height,
+                                            state_hash: block.state_hash.clone(),
+                                            timestamp: block.timestamp,
+                                            account: account.clone(),
+                                        });
+                                        state.cast(new_account_event);
 
                                         // Insert the account into the database
                                         let insert_query = "INSERT INTO discovered_accounts (account, height) VALUES ($1, $2)";
@@ -146,16 +115,7 @@ impl Actor for NewAccountActor {
             }
             _ => {}
         }
-    }
-
-    async fn report(&self) {
-        let mainnet_blocks = self.mainnet_blocks.lock().await;
-        self.print_report("Mainnet Blocks HashMap", mainnet_blocks.len());
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
@@ -163,7 +123,7 @@ impl Actor for NewAccountActor {
 mod new_account_actor_tests {
     use super::*;
     use crate::stream::{
-        events::{Event, EventType},
+        events::Event,
         mainnet_block_models::{CommandStatus, CommandSummary},
         payloads::{BlockConfirmationPayload, MainnetBlockPayload, NewAccountPayload},
     };
@@ -183,7 +143,7 @@ mod new_account_actor_tests {
 
         let account = "B62qtestaccount1".to_string();
         let event = Event {
-            event_type: EventType::PreExistingAccount,
+            event_type: Event::PreExistingAccount,
             payload: account.to_string(),
         };
 
@@ -213,7 +173,7 @@ mod new_account_actor_tests {
         };
 
         let event = Event {
-            event_type: EventType::MainnetBlock,
+            event_type: Event::MainnetBlock,
             payload: sonic_rs::to_string(&block).unwrap(),
         };
 
@@ -246,7 +206,7 @@ mod new_account_actor_tests {
 
         // Add the mainnet block
         let block_event = Event {
-            event_type: EventType::MainnetBlock,
+            event_type: Event::MainnetBlock,
             payload: sonic_rs::to_string(&block).unwrap(),
         };
         actor.handle_event(block_event).await;
@@ -259,7 +219,7 @@ mod new_account_actor_tests {
         };
 
         let confirmation_event = Event {
-            event_type: EventType::BlockConfirmation,
+            event_type: Event::BlockConfirmation,
             payload: sonic_rs::to_string(&confirmation_payload).unwrap(),
         };
 
@@ -268,7 +228,7 @@ mod new_account_actor_tests {
         // Verify a NewAccount event is published
         if let Ok(event) = timeout(std::time::Duration::from_secs(1), receiver.recv()).await {
             let received_event = event.unwrap();
-            assert_eq!(received_event.event_type, EventType::NewAccount);
+            assert_eq!(received_event.event_type, Event::NewAccount);
 
             let new_account_payload: NewAccountPayload = sonic_rs::from_str(&received_event.payload).unwrap();
             assert_eq!(new_account_payload.height, block.height);
@@ -298,7 +258,7 @@ mod new_account_actor_tests {
 
         // Add the mainnet block
         let block_event = Event {
-            event_type: EventType::MainnetBlock,
+            event_type: Event::MainnetBlock,
             payload: sonic_rs::to_string(&block).unwrap(),
         };
         actor.handle_event(block_event).await;
@@ -311,7 +271,7 @@ mod new_account_actor_tests {
         };
 
         let confirmation_event = Event {
-            event_type: EventType::BlockConfirmation,
+            event_type: Event::BlockConfirmation,
             payload: sonic_rs::to_string(&confirmation_payload).unwrap(),
         };
 
@@ -329,7 +289,7 @@ mod new_account_actor_tests {
 
         // Add the preexisting account to the database
         let preexisting_event = Event {
-            event_type: EventType::PreExistingAccount,
+            event_type: Event::PreExistingAccount,
             payload: account.to_string(),
         };
         actor.handle_event(preexisting_event).await;
@@ -347,7 +307,7 @@ mod new_account_actor_tests {
 
         // Add the mainnet block
         let block_event = Event {
-            event_type: EventType::MainnetBlock,
+            event_type: Event::MainnetBlock,
             payload: sonic_rs::to_string(&block).unwrap(),
         };
         actor.handle_event(block_event).await;
@@ -360,7 +320,7 @@ mod new_account_actor_tests {
         };
 
         let confirmation_event = Event {
-            event_type: EventType::BlockConfirmation,
+            event_type: Event::BlockConfirmation,
             payload: sonic_rs::to_string(&confirmation_payload).unwrap(),
         };
 

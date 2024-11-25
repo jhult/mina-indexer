@@ -1,8 +1,4 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
+use super::super::{events::Event, shared_publisher::SharedPublisher, Actor};
 use crate::{
     constants::TRANSITION_FRONTIER_DISTANCE,
     stream::{canonical_items_manager::CanonicalItemsManager, payloads::*},
@@ -46,13 +42,13 @@ impl Actor for SnarkCanonicitySummaryActor {
 
     async fn handle_event(&self, event: Event) {
         match event.event_type {
-            EventType::BlockCanonicityUpdate => {
+            Event::BlockCanonicityUpdate => {
                 let payload: BlockCanonicityUpdatePayload = sonic_rs::from_str(&event.payload).unwrap();
                 let manager = self.canonical_items_manager.lock().await;
                 manager.add_block_canonicity_update(payload.clone()).await;
                 for payload in manager.get_updates(payload.height).await.iter() {
                     self.publish(Event {
-                        event_type: EventType::SnarkCanonicitySummary,
+                        event_type: Event::SnarkCanonicitySummary,
                         payload: sonic_rs::to_string(&payload).unwrap(),
                     });
                 }
@@ -61,14 +57,14 @@ impl Actor for SnarkCanonicitySummaryActor {
                     eprintln!("{}", e);
                 }
             }
-            EventType::MainnetBlock => {
+            Event::MainnetBlock => {
                 let event_payload: MainnetBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
                 let manager = self.canonical_items_manager.lock().await;
                 manager
                     .add_items_count(event_payload.height, &event_payload.state_hash, event_payload.snark_work_count as u64)
                     .await;
             }
-            EventType::SnarkWorkSummary => {
+            Event::SnarkWorkSummary => {
                 let event_payload: SnarkWorkSummaryPayload = sonic_rs::from_str(&event.payload).unwrap();
                 let manager = self.canonical_items_manager.lock().await;
                 manager
@@ -83,7 +79,7 @@ impl Actor for SnarkCanonicitySummaryActor {
                     .await;
                 for payload in manager.get_updates(event_payload.height).await.iter() {
                     self.publish(Event {
-                        event_type: EventType::SnarkCanonicitySummary,
+                        event_type: Event::SnarkCanonicitySummary,
                         payload: sonic_rs::to_string(&payload).unwrap(),
                     });
                 }
@@ -141,7 +137,7 @@ async fn test_snark_canonicity_summary_actor_with_mainnet_block() -> anyhow::Res
 
     // Send a MainnetBlock event to set the expected number of SnarkWorkSummary items
     let mainnet_block_event = Event {
-        event_type: EventType::MainnetBlock,
+        event_type: Event::MainnetBlock,
         payload: sonic_rs::to_string(&MainnetBlockPayload {
             height: 10,
             state_hash: "sample_hash".to_string(),
@@ -174,7 +170,7 @@ async fn test_snark_canonicity_summary_actor_with_mainnet_block() -> anyhow::Res
         send_event(
             &actor,
             Event {
-                event_type: EventType::SnarkWorkSummary,
+                event_type: Event::SnarkWorkSummary,
                 payload: sonic_rs::to_string(snark).unwrap(),
             },
         )
@@ -183,7 +179,7 @@ async fn test_snark_canonicity_summary_actor_with_mainnet_block() -> anyhow::Res
 
     // Send BlockCanonicityUpdate event
     let block_update_event = Event {
-        event_type: EventType::BlockCanonicityUpdate,
+        event_type: Event::BlockCanonicityUpdate,
         payload: sonic_rs::to_string(&BlockCanonicityUpdatePayload {
             height: 10,
             canonical: true,

@@ -1,45 +1,23 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
 use crate::stream::{
+    events::Event,
     mainnet_block_models::{CommandStatus, CommandType},
     payloads::{
         AccountingEntry, AccountingEntryAccountType, AccountingEntryType, CanonicalInternalCommandLogPayload, CanonicalUserCommandLogPayload,
         DoubleEntryRecordPayload, InternalCommandType, LedgerDestination, NewAccountPayload,
     },
 };
-use async_trait::async_trait;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 
-pub struct AccountingActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub entries_processed: AtomicUsize,
-}
+pub struct AccountingActor;
 
 impl AccountingActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
-        Self {
-            id: "AccountingActor".to_string(),
-            shared_publisher,
-            entries_processed: AtomicUsize::new(0),
-        }
-    }
-
-    async fn publish_transaction(&self, record: &DoubleEntryRecordPayload) {
+    async fn publish_transaction(state: &ActorRef<Event>, record: &DoubleEntryRecordPayload) -> Result<(), ActorProcessingErr> {
         record.verify();
-        let event = Event {
-            event_type: EventType::DoubleEntryTransaction,
-            payload: sonic_rs::to_string(record).unwrap(),
-        };
-
-        self.shared_publisher.publish(event);
-        self.entries_processed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        state.cast(Event::DoubleEntryTransaction(record.clone()))?;
+        Ok(())
     }
 
-    async fn process_internal_command(&self, payload: &CanonicalInternalCommandLogPayload) {
+    async fn process_internal_command(ctx: &ActorRef<Event>, payload: &CanonicalInternalCommandLogPayload) -> Result<(), ActorProcessingErr> {
         if payload.internal_command_type == InternalCommandType::FeeTransferViaCoinbase {
             {
                 let mut source = AccountingEntry {
@@ -60,7 +38,6 @@ impl AccountingActor {
                     amount_nanomina: payload.amount_nanomina,
                     timestamp: payload.timestamp,
                 };
-                // Swap debits and credits for non-canonical entries
                 if !payload.canonical {
                     source.entry_type = AccountingEntryType::Credit;
                     recipient.entry_type = AccountingEntryType::Debit;
@@ -73,7 +50,7 @@ impl AccountingActor {
                     rhs: vec![recipient],
                 };
 
-                self.publish_transaction(&double_entry_record).await;
+                Self::publish_transaction(ctx, &double_entry_record).await?;
             }
             {
                 let mut source = AccountingEntry {
@@ -94,7 +71,6 @@ impl AccountingActor {
                     amount_nanomina: payload.amount_nanomina,
                     timestamp: payload.timestamp,
                 };
-                // Swap debits and credits for non-canonical entries
                 if !payload.canonical {
                     source.entry_type = AccountingEntryType::Credit;
                     recipient.entry_type = AccountingEntryType::Debit;
@@ -107,7 +83,7 @@ impl AccountingActor {
                     rhs: vec![recipient],
                 };
 
-                self.publish_transaction(&double_entry_record).await;
+                Self::publish_transaction(ctx, &double_entry_record).await?;
             }
         } else {
             let mut source = AccountingEntry {
@@ -136,7 +112,6 @@ impl AccountingActor {
             };
 
             if !payload.canonical {
-                // Swap debits and credits for non-canonical entries
                 source.entry_type = AccountingEntryType::Credit;
                 recipient.entry_type = AccountingEntryType::Debit;
             }
@@ -149,45 +124,45 @@ impl AccountingActor {
                 rhs: vec![recipient],
             };
 
-            self.publish_transaction(&double_entry_record).await;
+            Self::publish_transaction(ctx, &double_entry_record).await?;
         }
+        Ok(())
     }
 
-    async fn process_user_command(&self, payload: &CanonicalUserCommandLogPayload) {
-        let mut sender_entry = AccountingEntry {
-            transfer_type: payload.txn_type.to_string(),
-            counterparty: payload.receiver.to_string(),
-            entry_type: AccountingEntryType::Debit,
-            account: payload.sender.to_string(),
-            account_type: AccountingEntryAccountType::BlockchainAddress,
-            amount_nanomina: payload.amount_nanomina,
-            timestamp: payload.timestamp,
-        };
-        let mut receiver_entry = AccountingEntry {
-            transfer_type: payload.txn_type.to_string(),
-            counterparty: payload.sender.to_string(),
-            entry_type: AccountingEntryType::Credit,
-            account: payload.receiver.to_string(),
-            account_type: AccountingEntryAccountType::BlockchainAddress,
-            amount_nanomina: payload.amount_nanomina,
-            timestamp: payload.timestamp,
-        };
-        if !payload.canonical {
-            // Swap debits and credits
-            sender_entry.entry_type = AccountingEntryType::Credit;
-            receiver_entry.entry_type = AccountingEntryType::Debit;
-        }
+    async fn process_user_command(ctx: &ActorRef<Event>, payload: &CanonicalUserCommandLogPayload) -> Result<(), ActorProcessingErr> {
         if payload.status == CommandStatus::Applied && payload.txn_type != CommandType::StakeDelegation {
-            // Split into two separate transactions for publishing
+            let mut sender_entry = AccountingEntry {
+                transfer_type: payload.txn_type.to_string(),
+                counterparty: payload.receiver.to_string(),
+                entry_type: AccountingEntryType::Debit,
+                account: payload.sender.to_string(),
+                account_type: AccountingEntryAccountType::BlockchainAddress,
+                amount_nanomina: payload.amount_nanomina,
+                timestamp: payload.timestamp,
+            };
+            let mut receiver_entry = AccountingEntry {
+                transfer_type: payload.txn_type.to_string(),
+                counterparty: payload.sender.to_string(),
+                entry_type: AccountingEntryType::Credit,
+                account: payload.receiver.to_string(),
+                account_type: AccountingEntryAccountType::BlockchainAddress,
+                amount_nanomina: payload.amount_nanomina,
+                timestamp: payload.timestamp,
+            };
+            if !payload.canonical {
+                sender_entry.entry_type = AccountingEntryType::Credit;
+                receiver_entry.entry_type = AccountingEntryType::Debit;
+            }
+
             let txn_1 = DoubleEntryRecordPayload {
                 height: payload.height,
                 state_hash: payload.state_hash.to_string(),
                 ledger_destination: LedgerDestination::BlockchainLedger,
-                lhs: vec![sender_entry],   // Sender entry
-                rhs: vec![receiver_entry], // Receiver entry
+                lhs: vec![sender_entry],
+                rhs: vec![receiver_entry],
             };
 
-            self.publish_transaction(&txn_1).await;
+            Self::publish_transaction(ctx, &txn_1).await?;
         }
 
         let mut fee_payer_entry = AccountingEntry {
@@ -211,7 +186,6 @@ impl AccountingActor {
         };
 
         if !payload.canonical {
-            // Swap debits and credits
             fee_payer_entry.entry_type = AccountingEntryType::Credit;
             block_reward_pool_entry.entry_type = AccountingEntryType::Debit;
         }
@@ -224,28 +198,26 @@ impl AccountingActor {
             rhs: vec![block_reward_pool_entry],
         };
 
-        self.publish_transaction(&txn_2).await;
+        Self::publish_transaction(ctx, &txn_2).await?;
+        Ok(())
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for AccountingActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.entries_processed
-    }
-
-    async fn handle_event(&self, event: Event) {
-        match event.event_type {
-            EventType::NewAccount => {
-                let payload: NewAccountPayload = sonic_rs::from_str(&event.payload).unwrap();
+    async fn handle(&self, ctx: ActorRef<Self::Msg>, msg: Self::Msg, _state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::NewAccount(payload) => {
                 if payload.height < 2 {
-                    // genesis ledger accounts pay no account creation fees
-                    // magic mina receiver in block 1 is also no subject to account creation fee
-                    return;
+                    return Ok(());
                 }
                 let double_entry_record = DoubleEntryRecordPayload {
                     height: payload.height,
@@ -271,38 +243,33 @@ impl Actor for AccountingActor {
                     }],
                 };
 
-                self.publish_transaction(&double_entry_record).await;
+                Self::publish_transaction(&ctx, &double_entry_record).await?;
             }
-            EventType::CanonicalInternalCommandLog => {
-                let payload: CanonicalInternalCommandLogPayload = sonic_rs::from_str(&event.payload).unwrap();
-                // not canonical, and wasn't before. No need to deduct
+            Event::CanonicalInternalCommandLog(payload) => {
                 if !payload.canonical && !payload.was_canonical {
-                    return;
+                    return Ok(());
                 }
-                self.process_internal_command(&payload).await;
+                Self::process_internal_command(&ctx, &payload).await?;
             }
-            EventType::CanonicalUserCommandLog => {
-                let payload: CanonicalUserCommandLogPayload = sonic_rs::from_str(&event.payload).unwrap();
-                // not canonical, and wasn't before. No need to deduct
+            Event::CanonicalUserCommandLog(payload) => {
                 if !payload.canonical && !payload.was_canonical {
-                    return;
+                    return Ok(());
                 }
-                self.process_user_command(&payload).await;
+                Self::process_user_command(&ctx, &payload).await?;
             }
             _ => {}
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod accounting_actor_tests {
     use super::*;
-    use crate::stream::payloads::{CanonicalInternalCommandLogPayload, CanonicalUserCommandLogPayload, DoubleEntryRecordPayload, InternalCommandType};
+    use crate::stream::{
+        events::Event,
+        payloads::{CanonicalInternalCommandLogPayload, CanonicalUserCommandLogPayload, DoubleEntryRecordPayload, InternalCommandType},
+    };
     use std::sync::{atomic::Ordering, Arc};
     use tokio::time::timeout;
 
@@ -621,7 +588,7 @@ mod accounting_actor_tests {
 
         actor
             .handle_event(Event {
-                event_type: EventType::CanonicalInternalCommandLog,
+                event_type: Event::CanonicalInternalCommandLog,
                 payload: sonic_rs::to_string(&payload).unwrap(),
             })
             .await;
@@ -731,7 +698,7 @@ mod accounting_actor_tests {
 
         // Create the event
         let event = Event {
-            event_type: EventType::NewAccount,
+            event_type: Event::NewAccount,
             payload: sonic_rs::to_string(&payload).unwrap(),
         };
 
@@ -743,7 +710,7 @@ mod accounting_actor_tests {
         assert!(published_event.is_ok(), "Expected a DoubleEntryTransaction event to be published.");
 
         if let Ok(Ok(event)) = published_event {
-            assert_eq!(event.event_type, EventType::DoubleEntryTransaction);
+            assert_eq!(event.event_type, Event::DoubleEntryTransaction);
 
             // Deserialize and verify the DoubleEntryRecordPayload
             let published_payload: DoubleEntryRecordPayload = sonic_rs::from_str(&event.payload).unwrap();
@@ -786,7 +753,7 @@ mod accounting_actor_tests {
 
         // Create the event
         let event = Event {
-            event_type: EventType::NewAccount,
+            event_type: Event::NewAccount,
             payload: sonic_rs::to_string(&payload).unwrap(),
         };
 

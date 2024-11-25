@@ -1,87 +1,55 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
-use crate::stream::payloads::{BerkeleyBlockPayload, BlockAncestorPayload, MainnetBlockPayload};
-use async_trait::async_trait;
-use std::sync::{atomic::AtomicUsize, Arc};
+use super::super::events::Event;
+use crate::stream::payloads::BlockAncestorPayload;
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 
-pub struct BlockAncestorActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-}
+pub struct BlockAncestorActor;
 
-impl BlockAncestorActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
-        Self {
-            id: "BlockAncestorActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
-        }
-    }
-}
-
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for BlockAncestorActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-    async fn handle_event(&self, event: Event) {
-        match event.event_type {
-            EventType::BerkeleyBlock => {
-                let block_payload: BerkeleyBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::BerkeleyBlock(block_payload) => {
                 let block_ancestor_payload = BlockAncestorPayload {
                     height: block_payload.height,
-                    state_hash: block_payload.state_hash.clone(),
-                    previous_state_hash: block_payload.previous_state_hash.clone(),
+                    state_hash: block_payload.state_hash,
+                    previous_state_hash: block_payload.previous_state_hash,
                     last_vrf_output: block_payload.last_vrf_output,
                 };
-                self.publish(Event {
-                    event_type: EventType::BlockAncestor,
-                    payload: sonic_rs::to_string(&block_ancestor_payload).unwrap(),
-                });
+                state.cast(Event::BlockAncestor(block_ancestor_payload))?;
             }
-            EventType::MainnetBlock => {
-                let block_payload: MainnetBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
+            Event::MainnetBlock(block_payload) => {
                 let block_ancestor_payload = BlockAncestorPayload {
                     height: block_payload.height,
-                    state_hash: block_payload.state_hash.clone(),
-                    previous_state_hash: block_payload.previous_state_hash.clone(),
+                    state_hash: block_payload.state_hash,
+                    previous_state_hash: block_payload.previous_state_hash,
                     last_vrf_output: block_payload.last_vrf_output,
                 };
-                self.publish(Event {
-                    event_type: EventType::BlockAncestor,
-                    payload: sonic_rs::to_string(&block_ancestor_payload).unwrap(),
-                });
+                state.cast(Event::BlockAncestor(block_ancestor_payload))?;
             }
             _ => {}
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
 #[tokio::test]
 async fn test_block_ancestor_actor_with_berkeley_block() -> anyhow::Result<()> {
-    use std::sync::atomic::Ordering;
-    // Create shared publisher
-    let shared_publisher = Arc::new(SharedPublisher::new(200));
-    let actor = BlockAncestorActor {
-        id: "TestActor".to_string(),
-        shared_publisher: Arc::clone(&shared_publisher),
-        events_published: AtomicUsize::new(0),
-    };
+    use crate::stream::{payloads::BerkeleyBlockPayload, test_utils::setup_test_actors};
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
 
-    // Define BerkeleyBlockPayload for the test
+    // Setup test actors
+    let actor = setup_test_actors(BlockAncestorActor {}).await;
+
+    // Create test payload
     let berkeley_block_payload = BerkeleyBlockPayload {
         height: 89,
         state_hash: "3NKVkEwELHY9CmPYxf25pwsKZpPf161QVCiC3JwdsyQwCYyE3wNCrRjWON".to_string(),
@@ -89,30 +57,22 @@ async fn test_block_ancestor_actor_with_berkeley_block() -> anyhow::Result<()> {
         last_vrf_output: "hu0nffAHwdL0CYQNAlabyiUlwNWhlbj0MwynpKLtAAA=".to_string(),
     };
 
-    // Create an Event with serialized BerkeleyBlockPayload
-    let event = Event {
-        event_type: EventType::BerkeleyBlock,
-        payload: sonic_rs::to_string(&berkeley_block_payload).unwrap(),
-    };
+    // Send test message and store response
+    let response = actor
+        .call(|_| Event::BerkeleyBlock(berkeley_block_payload), Some(Duration::from_secs(1)))
+        .await?;
 
-    // Subscribe to the shared publisher
-    let mut receiver = shared_publisher.subscribe();
-
-    // Invoke the actor with the BerkeleyBlock event
-    actor.on_event(event).await;
-
-    // Assert that the correct BlockAncestor event is published
-    if let Ok(received_event) = receiver.recv().await {
-        assert_eq!(received_event.event_type, EventType::BlockAncestor);
-
-        // Deserialize the payload and check values
-        let payload: BlockAncestorPayload = sonic_rs::from_str(&received_event.payload).unwrap();
-        assert_eq!(payload.height, 89);
-        assert_eq!(payload.state_hash, "3NKVkEwELHY9CmPYxf25pwsKZpPf161QVCiC3JwdsyQwCYyE3wNCrRjWON");
-        assert_eq!(payload.previous_state_hash, "3NKJarZEsMAHkcPfhGA72eyjWBXGHergBZEoTuGXWS7vWeq8D5wu");
-        assert_eq!(actor.actor_outputs().load(Ordering::SeqCst), 1);
-    } else {
-        panic!("Did not receive expected event from actor.");
+    // Verify the response
+    match response {
+        CallResult::Success(Event::BlockAncestor(payload)) => {
+            assert_eq!(payload.height, 89);
+            assert_eq!(payload.state_hash, "3NKVkEwELHY9CmPYxf25pwsKZpPf161QVCiC3JwdsyQwCYyE3wNCrRjWON");
+            assert_eq!(payload.previous_state_hash, "3NKJarZEsMAHkcPfhGA72eyjWBXGHergBZEoTuGXWS7vWeq8D5wu");
+            assert_eq!(payload.last_vrf_output, "hu0nffAHwdL0CYQNAlabyiUlwNWhlbj0MwynpKLtAAA=");
+        }
+        CallResult::Success(_) => panic!("Received unexpected message type"),
+        CallResult::Timeout => panic!("Call timed out"),
+        CallResult::SenderError => panic!("Call failed"),
     }
 
     Ok(())
@@ -120,16 +80,14 @@ async fn test_block_ancestor_actor_with_berkeley_block() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_block_ancestor_actor_with_mainnet_block() -> anyhow::Result<()> {
-    use std::sync::atomic::Ordering;
-    // Create shared publisher
-    let shared_publisher = Arc::new(SharedPublisher::new(200));
-    let actor = BlockAncestorActor {
-        id: "TestActor".to_string(),
-        shared_publisher: Arc::clone(&shared_publisher),
-        events_published: AtomicUsize::new(0),
-    };
+    use crate::stream::{payloads::MainnetBlockPayload, test_utils::setup_test_actors};
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
 
-    // Define MainnetBlockPayload for the test
+    // Setup test actors
+    let actor = setup_test_actors(BlockAncestorActor {}).await;
+
+    // Create test payload
     let mainnet_block_payload = MainnetBlockPayload {
         height: 101,
         state_hash: "4MTNpwef32H67dHk9Mx25ZLpHfVz27QXECm8C4o5eyRa5LgJ1qLScCwpJM".to_string(),
@@ -144,30 +102,20 @@ async fn test_block_ancestor_actor_with_mainnet_block() -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    // Create an Event with serialized MainnetBlockPayload
-    let event = Event {
-        event_type: EventType::MainnetBlock,
-        payload: sonic_rs::to_string(&mainnet_block_payload).unwrap(),
-    };
+    // Send test message and store response
+    let response = actor.call(|_| Event::MainnetBlock(mainnet_block_payload), Some(Duration::from_secs(1))).await?;
 
-    // Subscribe to the shared publisher
-    let mut receiver = shared_publisher.subscribe();
-
-    // Invoke the actor with the MainnetBlock event
-    actor.on_event(event).await;
-
-    // Assert that the correct BlockAncestor event is published
-    if let Ok(received_event) = receiver.recv().await {
-        assert_eq!(received_event.event_type, EventType::BlockAncestor);
-
-        // Deserialize the payload and check values
-        let payload: BlockAncestorPayload = sonic_rs::from_str(&received_event.payload).unwrap();
-        assert_eq!(payload.height, 101);
-        assert_eq!(payload.state_hash, "4MTNpwef32H67dHk9Mx25ZLpHfVz27QXECm8C4o5eyRa5LgJ1qLScCwpJM");
-        assert_eq!(payload.previous_state_hash, "4MPXcYhJY8URpwZxBEmv9C7kXf5h41PLXeX9GoTwFg3TuL2Q9zMn");
-        assert_eq!(actor.actor_outputs().load(Ordering::SeqCst), 1);
-    } else {
-        panic!("Did not receive expected event from actor.");
+    // Verify the response
+    match response {
+        CallResult::Success(Event::BlockAncestor(payload)) => {
+            assert_eq!(payload.height, 101);
+            assert_eq!(payload.state_hash, "4MTNpwef32H67dHk9Mx25ZLpHfVz27QXECm8C4o5eyRa5LgJ1qLScCwpJM");
+            assert_eq!(payload.previous_state_hash, "4MPXcYhJY8URpwZxBEmv9C7kXf5h41PLXeX9GoTwFg3TuL2Q9zMn");
+            assert_eq!(payload.last_vrf_output, "WXPOLoGn9vE7HwqkE-K5bH4d3LmSPPJQcfoLsrTDkQA=");
+        }
+        CallResult::Success(_) => panic!("Received unexpected message type"),
+        CallResult::Timeout => panic!("Call timed out"),
+        CallResult::SenderError => panic!("Call failed"),
     }
 
     Ok(())

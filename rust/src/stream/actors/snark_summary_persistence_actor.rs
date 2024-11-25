@@ -1,71 +1,49 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
 use crate::{
     constants::POSTGRES_CONNECTION_STRING,
-    stream::{db_logger::DbLogger, payloads::*},
+    stream::{events::Event, payloads::SnarkCanonicitySummaryPayload},
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use futures::lock::Mutex;
-use std::sync::{atomic::AtomicUsize, Arc};
-use tokio_postgres::NoTls;
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use tokio_postgres::{Client, NoTls};
 
 pub struct SnarkSummaryPersistenceActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub database_inserts: AtomicUsize,
-    pub db_logger: Arc<Mutex<DbLogger>>,
+    pub client: Option<Client>,
 }
 
 impl SnarkSummaryPersistenceActor {
-    pub async fn new(shared_publisher: Arc<SharedPublisher>, root_node: &Option<(u64, String)>) -> Self {
-        if let Ok((client, connection)) = tokio_postgres::connect(POSTGRES_CONNECTION_STRING, NoTls).await {
-            tokio::spawn(async move {
-                if let Err(e) = connection.await {
-                    eprintln!("connection error: {}", e);
-                }
-            });
+    async fn db_upsert(&self, summary: &SnarkCanonicitySummaryPayload) -> Result<u64, &'static str> {
+        let client = self.client.as_ref().expect("Client should be initialized");
+        let upsert_query = r#"
+            INSERT INTO snark_work_summary (
+                height,
+                state_hash,
+                timestamp,
+                prover,
+                fee,
+                is_canonical
+            ) VALUES
+                ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT ON CONSTRAINT unique_snark_work_summary
+            DO UPDATE SET
+                state_hash = EXCLUDED.state_hash,
+                timestamp = EXCLUDED.timestamp,
+                prover = EXCLUDED.prover,
+                fee = EXCLUDED.fee,
+                is_canonical = EXCLUDED.is_canonical;
+            "#;
 
-            let logger = DbLogger::builder(client)
-                .name("snarks")
-                .add_column("height BIGINT NOT NULL")
-                .add_column("state_hash TEXT NOT NULL")
-                .add_column("timestamp BIGINT NOT NULL")
-                .add_column("prover TEXT NOT NULL")
-                .add_column("fee_nanomina BIGINT NOT NULL")
-                .add_column("is_canonical BOOLEAN NOT NULL")
-                .distinct_columns(&["height", "state_hash", "timestamp", "prover", "fee_nanomina"])
-                .build(root_node)
-                .await
-                .expect("Failed to build snarks_log and snarks view");
-
-            Self {
-                id: "SnarkSummaryPersistenceActor".to_string(),
-                shared_publisher,
-                db_logger: Arc::new(Mutex::new(logger)),
-                database_inserts: AtomicUsize::new(0),
-            }
-        } else {
-            panic!("Unable to establish connection to database")
-        }
-    }
-
-    async fn log(&self, summary: &SnarkCanonicitySummaryPayload) -> Result<u64, &'static str> {
-        let logger = self.db_logger.lock().await;
-        match logger
-            .insert(
+        match client
+            .execute(
+                upsert_query,
                 &[
                     &(summary.height as i64),
                     &summary.state_hash,
                     &(summary.timestamp as i64),
                     &summary.prover,
-                    &(summary.fee_nanomina as i64),
+                    &{ summary.fee },
                     &summary.canonical,
                 ],
-                summary.height,
             )
             .await
         {
@@ -79,41 +57,62 @@ impl SnarkSummaryPersistenceActor {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for SnarkSummaryPersistenceActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        // Initialize database connection
+        let (client, connection) = tokio_postgres::connect(POSTGRES_CONNECTION_STRING, NoTls)
+            .await
+            .map_err(|e| ActorProcessingErr::Fatal(Box::new(e)))?;
+
+        // Spawn connection handler
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+
+        // Create table if it doesn't exist
+        client
+            .execute(
+                "CREATE TABLE IF NOT EXISTS snark_work_summary (
+                    height BIGINT NOT NULL,
+                    state_hash TEXT NOT NULL,
+                    timestamp BIGINT NOT NULL,
+                    prover TEXT NOT NULL,
+                    fee DOUBLE PRECISION NOT NULL,
+                    is_canonical BOOLEAN NOT NULL,
+                    CONSTRAINT unique_snark_work_summary UNIQUE (height, state_hash, timestamp, prover, fee)
+                );",
+                &[],
+            )
+            .await
+            .map_err(|e| ActorProcessingErr::Fatal(Box::new(e)))?;
+
+        Ok(Self { client: Some(client) })
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.database_inserts
-    }
-    async fn handle_event(&self, event: Event) {
-        if event.event_type == EventType::SnarkCanonicitySummary {
-            let event_payload: SnarkCanonicitySummaryPayload = sonic_rs::from_str(&event.payload).unwrap();
-            match self.log(&event_payload).await {
+    async fn handle(&self, ctx: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::SnarkCanonicitySummary(payload) => match state.db_upsert(&payload).await {
                 Ok(affected_rows) => {
                     assert_eq!(affected_rows, 1);
-                    self.shared_publisher.incr_database_insert();
-                    self.publish(Event {
-                        event_type: EventType::ActorHeight,
-                        payload: sonic_rs::to_string(&ActorHeightPayload {
-                            actor: self.id(),
-                            height: event_payload.height,
-                        })
-                        .unwrap(),
-                    });
+                    ctx.send_parent(Event::ActorHeight(ActorHeightPayload {
+                        height: payload.height,
+                        actor: "SnarkSummaryPersistenceActor".to_string(),
+                    }))?;
                 }
                 Err(e) => {
-                    panic!("{}", e);
+                    return Err(ActorProcessingErr::Fatal(e.into()));
                 }
-            }
+            },
+            _ => {}
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
@@ -145,7 +144,7 @@ mod snark_summary_persistence_actor_tests {
         };
 
         let event = Event {
-            event_type: EventType::SnarkCanonicitySummary,
+            event_type: Event::SnarkCanonicitySummary,
             payload: sonic_rs::to_string(&snark_summary).unwrap(),
         };
 
@@ -208,7 +207,7 @@ mod snark_summary_persistence_actor_tests {
 
         for summary in &summaries {
             let event = Event {
-                event_type: EventType::SnarkCanonicitySummary,
+                event_type: Event::SnarkCanonicitySummary,
                 payload: sonic_rs::to_string(&summary).unwrap(),
             };
             actor.handle_event(event).await;

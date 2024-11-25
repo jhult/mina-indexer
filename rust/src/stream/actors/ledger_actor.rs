@@ -1,166 +1,124 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
 use crate::{
     constants::POSTGRES_CONNECTION_STRING,
     stream::{
-        partitioned_table::PartitionedTable,
+        events::Event,
         payloads::{AccountingEntry, AccountingEntryType, ActorHeightPayload, DoubleEntryRecordPayload, LedgerDestination},
     },
 };
-use anyhow::Result;
-use async_trait::async_trait;
-use futures::lock::Mutex;
-use std::sync::{atomic::AtomicUsize, Arc};
-use tokio_postgres::NoTls;
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use tokio_postgres::{Client, NoTls};
 
 pub struct LedgerActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub database_inserts: AtomicUsize,
-    pub table: Arc<Mutex<PartitionedTable>>,
+    client: Client,
 }
 
-impl LedgerActor {
-    pub async fn new(shared_publisher: Arc<SharedPublisher>, root_node: &Option<(u64, String)>) -> Self {
+#[async_trait::async_trait]
+impl Actor for LedgerActor {
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = Option<(u64, String)>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
         let (client, connection) = tokio_postgres::connect(POSTGRES_CONNECTION_STRING, NoTls)
             .await
-            .expect("Unable to connect to database");
+            .map_err(|_| ActorProcessingErr::from("Unable to connect to database"))?;
+
         tokio::spawn(async move {
             if let Err(e) = connection.await {
                 eprintln!("connection error: {}", e);
             }
         });
 
-        let table = PartitionedTable::builder(client)
-            .name("blockchain_ledger")
-            .add_column("address TEXT NOT NULL")
-            .add_column("address_type TEXT NOT NULL")
-            .add_column("balance_delta BIGINT NOT NULL")
-            .add_column("counterparty TEXT NOT NULL")
-            .add_column("transfer_type TEXT NOT NULL")
-            .add_column("height BIGINT NOT NULL")
-            .add_column("state_hash TEXT NOT NULL")
-            .add_column("timestamp BIGINT NOT NULL")
-            .build(root_node)
-            .await
-            .unwrap();
+        if let Some((height, _)) = args {
+            if let Err(e) = client.execute("DELETE FROM blockchain_ledger WHERE height >= $1;", &[&(height as i64)]).await {
+                eprintln!("Unable to clean up blockchain_ledger table: {:?}", e);
+            }
+        } else if let Err(e) = client.execute("DROP TABLE IF EXISTS blockchain_ledger CASCADE;", &[]).await {
+            eprintln!("Unable to drop blockchain_ledger table: {:?}", e);
+        }
 
-        if let Err(e) = table
-            .get_client()
-            .execute(
-                "CREATE OR REPLACE VIEW account_summary AS
-                SELECT
-                    address,
-                    address_type,
-                    SUM(balance_delta) AS balance,
-                    MAX(height) AS latest_height
-                FROM
-                    blockchain_ledger
-                GROUP BY
-                    address, address_type
-                ORDER BY
-                    latest_height DESC;",
-                &[],
+        // Create table and view
+        client
+            .batch_execute(
+                "
+            CREATE TABLE IF NOT EXISTS blockchain_ledger (
+                address TEXT NOT NULL,
+                address_type TEXT NOT NULL,
+                balance_delta BIGINT NOT NULL,
+                counterparty TEXT NOT NULL,
+                transfer_type TEXT NOT NULL,
+                height BIGINT NOT NULL,
+                state_hash TEXT NOT NULL,
+                timestamp BIGINT NOT NULL,
+                entry_id BIGSERIAL PRIMARY KEY
+            );
+
+            CREATE OR REPLACE VIEW account_summary AS
+            SELECT
+                address,
+                address_type,
+                SUM(balance_delta) AS balance,
+                MAX(height) AS latest_height
+            FROM
+                blockchain_ledger
+            GROUP BY
+                address, address_type
+            ORDER BY
+                latest_height DESC;
+        ",
             )
             .await
-        {
-            println!("Unable to create account_summary table {:?}", e);
-        }
-        Self {
-            id: "LedgerActor".to_string(),
-            shared_publisher,
-            table: Arc::new(Mutex::new(table)),
-            database_inserts: AtomicUsize::new(0),
-        }
+            .map_err(|_| ActorProcessingErr::from("Failed to create tables and views"))?;
+
+        Ok(Self { client })
     }
 
-    async fn log(&self, table: &PartitionedTable, payload: &AccountingEntry, height: &i64, state_hash: &str, timestamp: &i64) -> Result<u64, &'static str> {
-        let balance_delta: i64 = match payload.entry_type {
-            AccountingEntryType::Credit => payload.amount_nanomina as i64,
-            AccountingEntryType::Debit => -(payload.amount_nanomina as i64),
-        };
+    async fn handle(&self, ctx: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::DoubleEntryTransaction(payload) => {
+                if payload.ledger_destination != LedgerDestination::BlockchainLedger {
+                    return Ok(());
+                }
 
-        match table
-            .insert(
-                &[
-                    &payload.account,
-                    &payload.account_type.to_string(),
-                    &balance_delta,
-                    &payload.counterparty.to_string(),
-                    &payload.transfer_type.to_string(),
-                    height,
-                    &state_hash,
-                    timestamp,
-                ],
-                height.to_owned() as u64,
-            )
-            .await
-        {
-            Err(e) => {
-                let msg = e.to_string();
-                println!("{}", msg);
-                Err("unable to upsert into blockchain_ledger table")
-            }
-            Ok(affected_rows) => Ok(affected_rows),
-        }
-    }
-}
+                for entry in payload.lhs.iter().chain(payload.rhs.iter()) {
+                    let balance_delta: i64 = match entry.entry_type {
+                        AccountingEntryType::Credit => entry.amount_nanomina as i64,
+                        AccountingEntryType::Debit => -(entry.amount_nanomina as i64),
+                    };
 
-#[async_trait]
-impl Actor for LedgerActor {
-    fn id(&self) -> String {
-        self.id.clone()
-    }
+                    let affected_rows = state
+                        .client
+                        .execute(
+                            "INSERT INTO blockchain_ledger (address, address_type, balance_delta, height, state_hash, timestamp, counterparty, transfer_type)
+                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                            &[
+                                &entry.account,
+                                &entry.account_type.to_string(),
+                                &balance_delta,
+                                &(payload.height as i64),
+                                &payload.state_hash,
+                                &(entry.timestamp as i64),
+                                &entry.counterparty.to_string(),
+                                &entry.transfer_type.to_string(),
+                            ],
+                        )
+                        .await
+                        .map_err(|e| ActorProcessingErr::from(format!("Database error: {}", e)))?;
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.database_inserts
-    }
-
-    async fn handle_event(&self, event: Event) {
-        if event.event_type == EventType::DoubleEntryTransaction {
-            let event_payload: DoubleEntryRecordPayload = sonic_rs::from_str(&event.payload).unwrap();
-            if event_payload.ledger_destination != LedgerDestination::BlockchainLedger {
-                return;
-            }
-            let table = self.table.lock().await;
-            for accounting_entry in event_payload.lhs.iter().chain(event_payload.rhs.iter()) {
-                match self
-                    .log(
-                        &table,
-                        accounting_entry,
-                        &(event_payload.height as i64),
-                        &event_payload.state_hash,
-                        &(accounting_entry.timestamp as i64),
-                    )
-                    .await
-                {
-                    Ok(affected_rows) => {
-                        assert_eq!(affected_rows, 1);
-                        self.shared_publisher.incr_database_insert();
-                        self.actor_outputs().fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                        self.publish(Event {
-                            event_type: EventType::ActorHeight,
-                            payload: sonic_rs::to_string(&ActorHeightPayload {
-                                actor: self.id(),
-                                height: event_payload.height,
-                            })
-                            .unwrap(),
-                        });
+                    if affected_rows != 1 {
+                        return Err(ActorProcessingErr::from("Expected exactly one row to be affected"));
                     }
-                    Err(e) => {
-                        panic!("{:?}", e);
-                    }
+
+                    let actor_height = ActorHeightPayload {
+                        actor: "LedgerActor".to_string(),
+                        height: payload.height,
+                    };
+                    state.cast(Event::ActorHeight(actor_height))?;
                 }
             }
+            _ => {}
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
@@ -168,7 +126,7 @@ impl Actor for LedgerActor {
 mod blockchain_ledger_actor_tests {
     use super::*;
     use crate::stream::{
-        events::{Event, EventType},
+        events::Event,
         payloads::{AccountingEntry, AccountingEntryAccountType, AccountingEntryType, DoubleEntryRecordPayload, LedgerDestination},
     };
     // use serial_test::serial;
@@ -333,7 +291,7 @@ mod blockchain_ledger_actor_tests {
 
         // Publish event and process it
         let event = Event {
-            event_type: EventType::DoubleEntryTransaction,
+            event_type: Event::DoubleEntryTransaction,
             payload: sonic_rs::to_string(&double_entry_payload).unwrap(),
         };
         actor.handle_event(event).await;
@@ -400,7 +358,7 @@ mod blockchain_ledger_actor_tests {
 
         // Create an event with the payload
         let event = Event {
-            event_type: EventType::DoubleEntryTransaction,
+            event_type: Event::DoubleEntryTransaction,
             payload: sonic_rs::to_string(&double_entry_payload).unwrap(),
         };
 
@@ -412,7 +370,7 @@ mod blockchain_ledger_actor_tests {
         // Verify that the height was published
         let published_event = receiver.recv().await.expect("No event was published");
 
-        assert_eq!(published_event.event_type, EventType::ActorHeight);
+        assert_eq!(published_event.event_type, Event::ActorHeight);
         let payload: ActorHeightPayload = sonic_rs::from_str(&published_event.payload).expect("Failed to deserialize payload");
         assert_eq!(payload.height, double_entry_payload.height);
 

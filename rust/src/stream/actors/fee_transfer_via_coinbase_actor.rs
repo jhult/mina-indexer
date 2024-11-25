@@ -1,41 +1,22 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
-use crate::stream::payloads::{InternalCommandLogPayload, InternalCommandType, MainnetBlockPayload};
-use async_trait::async_trait;
-use std::sync::{atomic::AtomicUsize, Arc};
+use super::super::events::Event;
+use crate::stream::payloads::{InternalCommandLogPayload, InternalCommandType};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 
-pub struct FeeTransferViaCoinbaseActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-}
+pub struct FeeTransferViaCoinbaseActor;
 
-impl FeeTransferViaCoinbaseActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
-        Self {
-            id: "FeeTransferViaCoinbaseActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
-        }
-    }
-}
-
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for FeeTransferViaCoinbaseActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-    async fn handle_event(&self, event: Event) {
-        match event.event_type {
-            EventType::MainnetBlock => {
-                let block_payload: MainnetBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::MainnetBlock(block_payload) => {
                 if let Some(fee_transfers_via_coinbase) = block_payload.fee_transfer_via_coinbase {
                     for fee_transfer_via_coinbase in fee_transfers_via_coinbase.iter() {
                         let payload = InternalCommandLogPayload {
@@ -47,34 +28,23 @@ impl Actor for FeeTransferViaCoinbaseActor {
                             amount_nanomina: (fee_transfer_via_coinbase.fee * 1_000_000_000f64) as u64,
                             source: Some(block_payload.coinbase_receiver.to_string()),
                         };
-                        self.publish(Event {
-                            event_type: EventType::InternalCommandLog,
-                            payload: sonic_rs::to_string(&payload).unwrap(),
-                        });
+                        state.cast(Event::InternalCommandLog(payload));
                     }
                 }
             }
-            EventType::BerkeleyBlock => {
+            Event::BerkeleyBlock(block) => {
                 todo!("impl for berkeley block");
             }
             _ => {}
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
 #[tokio::test]
 async fn test_handle_mainnet_block_event_publishes_fee_transfer_via_coinbase_event() {
     use super::*;
-    use crate::stream::{
-        events::{Event, EventType},
-        mainnet_block_models::FeeTransferViaCoinbase,
-        payloads::MainnetBlockPayload,
-    };
+    use crate::stream::{events::Event, mainnet_block_models::FeeTransferViaCoinbase, payloads::MainnetBlockPayload};
     use std::sync::Arc;
 
     // Setup a shared publisher to capture published events
@@ -96,7 +66,7 @@ async fn test_handle_mainnet_block_event_publishes_fee_transfer_via_coinbase_eve
     // Serialize the MainnetBlockPayload to JSON for the event payload
     let payload_json = sonic_rs::to_string(&block_payload).unwrap();
     let event = Event {
-        event_type: EventType::MainnetBlock,
+        event_type: Event::MainnetBlock,
         payload: payload_json,
     };
 
@@ -108,7 +78,7 @@ async fn test_handle_mainnet_block_event_publishes_fee_transfer_via_coinbase_eve
 
     // Capture and verify the published FeeTransferViaCoinbase event
     if let Ok(received_event) = receiver.recv().await {
-        assert_eq!(received_event.event_type, EventType::InternalCommandLog);
+        assert_eq!(received_event.event_type, Event::InternalCommandLog);
 
         // Deserialize the payload of the FeeTransferViaCoinbase event
         let fee_transfer_payload: InternalCommandLogPayload = sonic_rs::from_str(&received_event.payload).unwrap();
@@ -130,10 +100,7 @@ async fn test_handle_mainnet_block_event_publishes_fee_transfer_via_coinbase_eve
 #[tokio::test]
 async fn test_handle_mainnet_block_event_without_fee_transfer_via_coinbase() {
     use super::*;
-    use crate::stream::{
-        events::{Event, EventType},
-        payloads::MainnetBlockPayload,
-    };
+    use crate::stream::{events::Event, payloads::MainnetBlockPayload};
     use std::sync::Arc;
 
     // Setup a shared publisher to capture published events
@@ -152,7 +119,7 @@ async fn test_handle_mainnet_block_event_without_fee_transfer_via_coinbase() {
     // Serialize the MainnetBlockPayload to JSON for the event payload
     let payload_json = sonic_rs::to_string(&block_payload).unwrap();
     let event = Event {
-        event_type: EventType::MainnetBlock,
+        event_type: Event::MainnetBlock,
         payload: payload_json,
     };
 

@@ -1,8 +1,4 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
+use super::super::{events::Event, shared_publisher::SharedPublisher, Actor};
 use crate::{
     constants::MAINNET_EPOCH_SLOT_COUNT,
     stream::{mainnet_block_models::CommandType, payloads::*},
@@ -38,7 +34,7 @@ impl Actor for StakingAccountingActor {
     }
 
     async fn handle_event(&self, event: Event) {
-        if event.event_type == EventType::CanonicalUserCommandLog {
+        if event.event_type == Event::CanonicalUserCommandLog {
             let log: CanonicalUserCommandLogPayload = sonic_rs::from_str(&event.payload).unwrap();
             if log.txn_type == CommandType::StakeDelegation {
                 // not canonical, and wasn't before. No need to publish
@@ -75,7 +71,7 @@ impl Actor for StakingAccountingActor {
                     payload.rhs[0].entry_type = AccountingEntryType::Debit;
                 }
                 self.publish(Event {
-                    event_type: EventType::DoubleEntryTransaction,
+                    event_type: Event::DoubleEntryTransaction,
                     payload: sonic_rs::to_string(&payload).unwrap(),
                 })
             }
@@ -92,7 +88,7 @@ impl Actor for StakingAccountingActor {
 mod staking_accounting_actor_tests {
     use super::*;
     use crate::stream::{
-        events::{Event, EventType},
+        events::Event,
         payloads::{AccountingEntryType, CanonicalUserCommandLogPayload, DoubleEntryRecordPayload},
     };
     use std::sync::Arc;
@@ -106,7 +102,7 @@ mod staking_accounting_actor_tests {
 
         // Create a stake delegation log event
         let canonical_event = Event {
-            event_type: EventType::CanonicalUserCommandLog,
+            event_type: Event::CanonicalUserCommandLog,
             payload: sonic_rs::to_string(&CanonicalUserCommandLogPayload {
                 txn_type: CommandType::StakeDelegation,
                 global_slot: 14280,
@@ -150,7 +146,7 @@ mod staking_accounting_actor_tests {
 
         // Create a non-canonical stake delegation log event with `was_canonical = true`
         let non_canonical_event = Event {
-            event_type: EventType::CanonicalUserCommandLog,
+            event_type: Event::CanonicalUserCommandLog,
             payload: sonic_rs::to_string(&CanonicalUserCommandLogPayload {
                 txn_type: CommandType::StakeDelegation,
                 global_slot: 14280,
@@ -198,7 +194,7 @@ mod staking_accounting_actor_tests {
 
         // Create a non-canonical stake delegation log event
         let non_canonical_event = Event {
-            event_type: EventType::CanonicalUserCommandLog,
+            event_type: Event::CanonicalUserCommandLog,
             payload: sonic_rs::to_string(&CanonicalUserCommandLogPayload {
                 txn_type: CommandType::StakeDelegation,
                 global_slot: 14280,
@@ -231,7 +227,7 @@ mod staking_accounting_actor_tests {
 
         // Create a non-stake delegation log event
         let non_stake_delegation_event = Event {
-            event_type: EventType::CanonicalUserCommandLog,
+            event_type: Event::CanonicalUserCommandLog,
             payload: sonic_rs::to_string(&CanonicalUserCommandLogPayload {
                 txn_type: CommandType::Payment,
                 global_slot: 14280,

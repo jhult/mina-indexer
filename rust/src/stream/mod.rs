@@ -1,22 +1,18 @@
 use crate::{constants::HEIGHT_SPREAD_MSG_THROTTLE, stream::actors::blockchain_tree_builder_actor::BlockchainTreeBuilderActor};
 use actors::{
-    accounting_actor::AccountingActor, berkeley_block_parser_actor::BerkeleyBlockParserActor, best_block_actor::BestBlockActor,
-    block_ancestor_actor::BlockAncestorActor, block_canonicity_actor::BlockCanonicityActor, block_confirmations_actor::BlockConfirmationsActor,
-    block_log_actor::BlockLogActor, canonical_block_log_actor::CanonicalBlockLogActor,
-    canonical_block_log_persistence_actor::CanonicalBlockLogPersistenceActor, canonical_internal_command_log_actor::CanonicalInternalCommandLogActor,
+    berkeley_block_parser_actor::BerkeleyBlockParserActor, best_block_actor::BestBlockActor, block_ancestor_actor::BlockAncestorActor,
+    block_canonicity_actor::BlockCanonicityActor, block_confirmations_actor::BlockConfirmationsActor, block_log_actor::BlockLogActor,
+    canonical_block_log_actor::CanonicalBlockLogActor, canonical_block_log_persistence_actor::CanonicalBlockLogPersistenceActor,
+    canonical_internal_command_log_actor::CanonicalInternalCommandLogActor,
     canonical_internal_command_log_persistence_actor::CanonicalInternalCommandLogPersistenceActor,
     canonical_user_command_log_actor::CanonicalUserCommandLogActor, canonical_user_command_persistence_actor::CanonicalUserCommandPersistenceActor,
     coinbase_transfer_actor::CoinbaseTransferActor, fee_transfer_actor::FeeTransferActor, fee_transfer_via_coinbase_actor::FeeTransferViaCoinbaseActor,
     ledger_actor::LedgerActor, mainnet_block_parser_actor::MainnetBlockParserActor, monitor_actor::MonitorActor, new_account_actor::NewAccountActor,
     pcb_path_actor::PCBBlockPathActor, snark_canonicity_summary_actor::SnarkCanonicitySummaryActor,
-    snark_summary_persistence_actor::SnarkSummaryPersistenceActor, snark_work_actor::SnarkWorkSummaryActor, staking_ledger_actor::StakingLedgerActor,
-    user_command_log_actor::UserCommandLogActor, Actor,
+    snark_summary_persistence_actor::SnarkSummaryPersistenceActor, snark_work_actor::SnarkWorkSummaryActor, transition_frontier_actor::TransitionFrontierActor,
+    user_command_log_actor::UserCommandLogActor,
 };
-use events::Event;
-use futures::future::try_join_all;
-use shared_publisher::SharedPublisher;
-use std::{sync::Arc, time::Duration};
-use tokio::{sync::broadcast, task};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 
 mod actors;
 pub mod berkeley_block_models;
@@ -28,126 +24,125 @@ pub mod mainnet_block_models;
 pub mod models;
 pub mod partitioned_table;
 pub mod payloads;
-pub mod shared_publisher;
 pub mod sourcing;
 
-pub async fn subscribe_actors(
-    shared_publisher: &Arc<SharedPublisher>,
-    mut shutdown_receiver: broadcast::Receiver<()>, // Accept shutdown_receiver as a parameter
-    root_node: Option<(u64, String)>,
-) -> anyhow::Result<()> {
-    // let snark_persistence_actor = SnarkSummaryPersistenceActor::new(Arc::clone(shared_publisher)).await;
-    let canonical_block_log_persistence_actor = CanonicalBlockLogPersistenceActor::new(Arc::clone(shared_publisher), &root_node).await;
-    let user_command_persistence_actor = CanonicalUserCommandPersistenceActor::new(Arc::clone(shared_publisher), &root_node).await;
-    let internal_command_persistence_actor = CanonicalInternalCommandLogPersistenceActor::new(Arc::clone(shared_publisher), &root_node).await;
-    let account_summary_persistence_actor = LedgerActor::new(Arc::clone(shared_publisher), &root_node).await;
-    let staking_ledger_actor = StakingLedgerActor::new(Arc::clone(shared_publisher), &root_node).await;
-    let new_account_actor = NewAccountActor::new(Arc::clone(shared_publisher), &root_node).await;
-    let snark_summary_persistence_actor = SnarkSummaryPersistenceActor::new(Arc::clone(shared_publisher), &root_node).await;
+#[cfg(test)]
+pub mod test_utils;
 
-    // Define actors
-    let actors: Vec<Arc<dyn Actor + Send + Sync>> = vec![
-        Arc::new(PCBBlockPathActor::new(Arc::clone(shared_publisher))),
-        Arc::new(BerkeleyBlockParserActor::new(Arc::clone(shared_publisher))),
-        Arc::new(MainnetBlockParserActor::new(Arc::clone(shared_publisher))),
-        Arc::new(BlockAncestorActor::new(Arc::clone(shared_publisher))),
-        Arc::new(BlockchainTreeBuilderActor::new(Arc::clone(shared_publisher))),
-        Arc::new(BlockCanonicityActor::new(Arc::clone(shared_publisher))),
-        Arc::new(BestBlockActor::new(Arc::clone(shared_publisher))),
-        Arc::new(BlockLogActor::new(Arc::clone(shared_publisher))),
-        Arc::new(SnarkWorkSummaryActor::new(Arc::clone(shared_publisher))),
-        Arc::new(SnarkCanonicitySummaryActor::new(Arc::clone(shared_publisher))),
-        Arc::new(UserCommandLogActor::new(Arc::clone(shared_publisher))),
-        Arc::new(CanonicalUserCommandLogActor::new(Arc::clone(shared_publisher))),
-        Arc::new(CoinbaseTransferActor::new(Arc::clone(shared_publisher))),
-        Arc::new(FeeTransferViaCoinbaseActor::new(Arc::clone(shared_publisher))),
-        Arc::new(FeeTransferActor::new(Arc::clone(shared_publisher))),
-        Arc::new(CanonicalInternalCommandLogActor::new(Arc::clone(shared_publisher))),
-        Arc::new(AccountingActor::new(Arc::clone(shared_publisher))),
-        Arc::new(BlockConfirmationsActor::new(Arc::clone(shared_publisher))),
-        Arc::new(CanonicalBlockLogActor::new(Arc::clone(shared_publisher))),
-        Arc::new(MonitorActor::new(Arc::clone(shared_publisher), HEIGHT_SPREAD_MSG_THROTTLE)),
-        // Arc::new(StakingAccountingActor::new(Arc::clone(shared_publisher))),
-        Arc::new(snark_summary_persistence_actor),
-        Arc::new(user_command_persistence_actor),
-        Arc::new(internal_command_persistence_actor),
-        Arc::new(account_summary_persistence_actor),
-        Arc::new(new_account_actor),
-        Arc::new(canonical_block_log_persistence_actor),
-        Arc::new(staking_ledger_actor),
-    ];
-
-    let monitor_actors = actors.clone();
-    let monitor_shutdown_rx = shutdown_receiver.resubscribe();
-
-    // Spawn tasks for each actor and collect their handles
-    let mut actor_handles = Vec::new();
-    for actor in actors {
-        let receiver = shared_publisher.subscribe();
-        let actor_shutdown_rx = shutdown_receiver.resubscribe(); // Use resubscribe for each actor
-        let handle = task::spawn(setup_actor(receiver, actor_shutdown_rx, actor));
-        actor_handles.push(handle);
-    }
-    let monitor_handle = tokio::spawn(async move {
-        let mut monitor_shutdown_rx = monitor_shutdown_rx;
-        loop {
-            tokio::select! {
-                _ = monitor_shutdown_rx.recv() => {
-                    println!("Shutdown signal received, terminating monitor task.");
-                    break;
-                }
-                _ = tokio::time::sleep(Duration::from_secs(60)) => {
-                    println!("Actor reports:");
-                    for actor in monitor_actors.clone() {
-                        actor.report().await;
-                    }
-                }
-            }
-        }
-    });
-
-    // Wait for the shutdown signal to terminat
-    let _ = shutdown_receiver.recv().await;
-
-    // Await all actor handles to ensure they shut down gracefully
-    println!("Waiting for all actors to shut down...");
-    try_join_all(actor_handles).await?;
-    monitor_handle.await?;
-    println!("All actors have been shut down.");
-    Ok(())
+pub struct Supervisor {
+    accounting_actor: ActorRef<AccountingPayload>,
+    berkeley_block_parser_actor: ActorRef<BerkeleyBlockParserActor>,
+    best_block_actor: ActorRef<BestBlockActor>,
+    block_ancestor_actor: ActorRef<BlockAncestorActor>,
+    block_canonicity_actor: ActorRef<BlockCanonicityActor>,
+    block_confirmations_actor: ActorRef<BlockConfirmationsActor>,
+    block_log_actor: ActorRef<BlockLogActor>,
+    blockchain_tree_builder_actor: ActorRef<BlockchainTreeBuilderActor>,
+    canonical_block_log_actor: ActorRef<CanonicalBlockLogActor>,
+    canonical_block_log_persistence_actor: ActorRef<CanonicalBlockLogPersistenceActor>,
+    canonical_internal_command_log_actor: ActorRef<CanonicalInternalCommandLogActor>,
+    canonical_internal_command_log_persistence_actor: ActorRef<CanonicalInternalCommandLogPersistenceActor>,
+    canonical_user_command_log_actor: ActorRef<CanonicalUserCommandLogActor>,
+    canonical_user_command_persistence_actor: ActorRef<CanonicalUserCommandPersistenceActor>,
+    coinbase_transfer_actor: ActorRef<CoinbaseTransferActor>,
+    fee_transfer_actor: ActorRef<FeeTransferActor>,
+    fee_transfer_via_coinbase_actor: ActorRef<FeeTransferViaCoinbaseActor>,
+    ledger_actor: ActorRef<LedgerActor>,
+    mainnet_block_parser_actor: ActorRef<MainnetBlockParserActor>,
+    new_account_actor: ActorRef<NewAccountActor>,
+    pcb_path_actor: ActorRef<PCBBlockPathActor>,
+    snark_canonicity_summary_actor: ActorRef<SnarkCanonicitySummaryActor>,
+    snark_summary_persistence_actor: ActorRef<SnarkSummaryPersistenceActor>,
+    snark_work_actor: ActorRef<SnarkWorkSummaryActor>,
+    transition_frontier_actor: ActorRef<TransitionFrontierActor>,
+    user_command_log_actor: ActorRef<UserCommandLogActor>,
 }
 
-async fn setup_actor<A>(mut receiver: broadcast::Receiver<Event>, mut shutdown_rx: broadcast::Receiver<()>, actor: Arc<A>)
-where
-    A: Actor + Send + Sync + 'static + ?Sized,
-{
-    loop {
-        tokio::select! {
-            event = receiver.recv() => {
-                match event {
-                    Ok(event) => {
-                        actor.on_event(event).await;
-                    }
-                    Err(broadcast::error::RecvError::Lagged(count)) => {
-                        println!("Actor {} lagged behind, missed {} messages",actor.id(), count);
-                    }
-                    Err(e) => {
-                        println!("{:?}",e)
-                    }
-                }
+#[async_trait::async_trait]
+impl Actor for Supervisor {
+    type Msg = ();
+    type State = Supervisor;
+    type Arguments = ();
 
-            },
-            _ = shutdown_rx.recv() => {
-                actor.shutdown(); // Generalized shutdown call
-                break;
+    async fn pre_start(&self, myself: ActorRef<Self::Msg>, args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        // Spawn all child actors
+        let (accounting_actor, _) = Actor::spawn("AccountingActor", Some(myself.clone()), ()).await?;
+        let (berkeley_block_parser_actor, _) = Actor::spawn("BerkeleyBlockParserActor", Some(myself.clone()), ()).await?;
+        let (best_block_actor, _) = Actor::spawn("BestBlockActor", Some(myself.clone()), ()).await?;
+        let (block_ancestor_actor, _) = Actor::spawn("BlockAncestorActor", Some(myself.clone()), ()).await?;
+        let (block_canonicity_actor, _) = Actor::spawn("BlockCanonicityActor", Some(myself.clone()), ()).await?;
+        let (block_confirmations_actor, _) = Actor::spawn("BlockConfirmationsActor", Some(myself.clone()), ()).await?;
+        let (block_log_actor, _) = Actor::spawn("BlockLogActor", Some(myself.clone()), ()).await?;
+        let (blockchain_tree_builder_actor, _) = Actor::spawn("BlockchainTreeBuilderActor", Some(myself.clone()), ()).await?;
+        let (canonical_block_log_actor, _) = Actor::spawn("CanonicalBlockLogActor", Some(myself.clone()), ()).await?;
+        let (canonical_block_log_persistence_actor, _) = Actor::spawn("CanonicalBlockLogPersistenceActor", Some(myself.clone()), ()).await?;
+        let (canonical_internal_command_log_actor, _) = Actor::spawn("CanonicalInternalCommandLogActor", Some(myself.clone()), ()).await?;
+        let (canonical_internal_command_log_persistence_actor, _) =
+            Actor::spawn("CanonicalInternalCommandLogPersistenceActor", Some(myself.clone()), ()).await?;
+        let (canonical_user_command_log_actor, _) = Actor::spawn("CanonicalUserCommandLogActor", Some(myself.clone()), ()).await?;
+        let (canonical_user_command_persistence_actor, _) = Actor::spawn("CanonicalUserCommandPersistenceActor", Some(myself.clone()), ()).await?;
+        let (coinbase_transfer_actor, _) = Actor::spawn("CoinbaseTransferActor", Some(myself.clone()), ()).await?;
+        let (fee_transfer_actor, _) = Actor::spawn("FeeTransferActor", Some(myself.clone()), ()).await?;
+        let (fee_transfer_via_coinbase_actor, _) = Actor::spawn("FeeTransferViaCoinbaseActor", Some(myself.clone()), ()).await?;
+        let (ledger_actor, _) = Actor::spawn("LedgerActor", Some(myself.clone()), ()).await?;
+        let (mainnet_block_parser_actor, _) = Actor::spawn("MainnetBlockParserActor", Some(myself.clone()), ()).await?;
+        let (new_account_actor, _) = Actor::spawn("NewAccountActor", Some(myself.clone()), ()).await?;
+        let (pcb_path_actor, _) = Actor::spawn("PCBBlockPathActor", Some(myself.clone()), ()).await?;
+        let (snark_canonicity_summary_actor, _) = Actor::spawn("SnarkCanonicitySummaryActor", Some(myself.clone()), ()).await?;
+        let (snark_summary_persistence_actor, _) = Actor::spawn("SnarkSummaryPersistenceActor", Some(myself.clone()), ()).await?;
+        let (snark_work_actor, _) = Actor::spawn("SnarkWorkSummaryActor", Some(myself.clone()), ()).await?;
+        let (transition_frontier_actor, _) = Actor::spawn("TransitionFrontierActor", Some(myself.clone()), ()).await?;
+        let (user_command_log_actor, _) = Actor::spawn("UserCommandLogActor", Some(myself.clone()), ()).await?;
+
+        Ok(Supervisor {
+            accounting_actor,
+            berkeley_block_parser_actor,
+            best_block_actor,
+            block_ancestor_actor,
+            block_canonicity_actor,
+            block_confirmations_actor,
+            block_log_actor,
+            blockchain_tree_builder_actor,
+            canonical_block_log_actor,
+            canonical_block_log_persistence_actor,
+            canonical_internal_command_log_actor,
+            canonical_internal_command_log_persistence_actor,
+            canonical_user_command_log_actor,
+            canonical_user_command_persistence_actor,
+            coinbase_transfer_actor,
+            fee_transfer_actor,
+            fee_transfer_via_coinbase_actor,
+            ledger_actor,
+            mainnet_block_parser_actor,
+            new_account_actor,
+            pcb_path_actor,
+            snark_canonicity_summary_actor,
+            snark_summary_persistence_actor,
+            snark_work_actor,
+            transition_frontier_actor,
+            user_command_log_actor,
+        })
+    }
+
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            SystemMessage::Block(payload) => {
+                state.block_actor.send_message(payload)?;
+            }
+            SystemMessage::UserCommand(payload) => {
+                state.user_cmd_actor.send_message(payload)?;
+            }
+            SystemMessage::Accounting(payload) => {
+                state.accounting_actor.send_message(payload)?;
             }
         }
+        Ok(())
     }
 }
 
 #[tokio::test]
 async fn test_process_blocks_dir_with_mainnet_blocks() -> anyhow::Result<()> {
-    use crate::stream::{events::EventType, payloads::*, sourcing::*};
+    use crate::stream::{events::Event, payloads::*, sourcing::*};
     use std::{collections::HashMap, path::PathBuf, str::FromStr};
     use tokio::{sync::broadcast, time::Duration};
 
@@ -179,15 +174,15 @@ async fn test_process_blocks_dir_with_mainnet_blocks() -> anyhow::Result<()> {
     let _ = process_handle.await;
 
     // Count each event type received
-    let mut event_counts: HashMap<EventType, usize> = HashMap::new();
+    let mut event_counts: HashMap<Event, usize> = HashMap::new();
     let mut internal_command_counts: HashMap<InternalCommandType, usize> = HashMap::new();
     let mut last_best_block: Option<BlockCanonicityUpdatePayload> = None;
     while let Ok(event) = receiver.try_recv() {
-        if event.event_type == EventType::BestBlock {
+        if event.event_type == Event::BestBlock {
             last_best_block = Some(sonic_rs::from_str(&event.payload).unwrap());
         }
         match event.event_type {
-            EventType::InternalCommandLog => {
+            Event::InternalCommandLog => {
                 if let Ok(InternalCommandLogPayload { internal_command_type, .. }) = sonic_rs::from_str(&event.payload) {
                     *internal_command_counts.entry(internal_command_type).or_insert(0) += 1
                 }
@@ -203,16 +198,16 @@ async fn test_process_blocks_dir_with_mainnet_blocks() -> anyhow::Result<()> {
     let length_of_chain = 100;
     let number_of_user_commands = 247; // hand-calulated
 
-    assert_eq!(event_counts.get(&EventType::PrecomputedBlockPath).cloned().unwrap(), paths_count);
-    assert_eq!(event_counts.get(&EventType::MainnetBlockPath).cloned().unwrap(), paths_count);
-    assert_eq!(event_counts.get(&EventType::BlockAncestor).cloned().unwrap(), paths_count);
-    assert_eq!(event_counts.get(&EventType::NewBlock).cloned().unwrap(), paths_plus_genesis_count);
-    assert_eq!(event_counts.get(&EventType::BlockLog).cloned().unwrap(), paths_plus_genesis_count);
-    assert_eq!(event_counts.get(&EventType::UserCommandLog).cloned().unwrap(), number_of_user_commands);
+    assert_eq!(event_counts.get(&Event::PrecomputedBlockPath).cloned().unwrap(), paths_count);
+    assert_eq!(event_counts.get(&Event::MainnetBlockPath).cloned().unwrap(), paths_count);
+    assert_eq!(event_counts.get(&Event::BlockAncestor).cloned().unwrap(), paths_count);
+    assert_eq!(event_counts.get(&Event::NewBlock).cloned().unwrap(), paths_plus_genesis_count);
+    assert_eq!(event_counts.get(&Event::BlockLog).cloned().unwrap(), paths_plus_genesis_count);
+    assert_eq!(event_counts.get(&Event::UserCommandLog).cloned().unwrap(), number_of_user_commands);
 
-    assert!(event_counts.get(&EventType::BestBlock).cloned().unwrap() > length_of_chain);
-    assert!(event_counts.get(&EventType::BestBlock).cloned().unwrap() < paths_count);
-    assert!(!event_counts.contains_key(&EventType::TransitionFrontier));
+    assert!(event_counts.get(&Event::BestBlock).cloned().unwrap() > length_of_chain);
+    assert!(event_counts.get(&Event::BestBlock).cloned().unwrap() < paths_count);
+    assert!(!event_counts.contains_key(&Event::TransitionFrontier));
 
     assert_eq!(internal_command_counts.get(&InternalCommandType::Coinbase).cloned().unwrap(), paths_count);
     assert_eq!(internal_command_counts.get(&InternalCommandType::FeeTransfer).cloned().unwrap(), 159); //manual count reveals 161
@@ -227,7 +222,7 @@ async fn test_process_blocks_dir_with_mainnet_blocks() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_process_blocks_dir_canonical_updates() -> anyhow::Result<()> {
-    use crate::stream::{events::EventType, payloads::BlockCanonicityUpdatePayload, sourcing::*};
+    use crate::stream::{events::Event, payloads::BlockCanonicityUpdatePayload, sourcing::*};
     use std::{path::PathBuf, str::FromStr};
     use tokio::{sync::broadcast, time::Duration};
 
@@ -304,7 +299,7 @@ async fn test_process_blocks_dir_canonical_updates() -> anyhow::Result<()> {
     // Collect actual BlockCanonicityUpdatePayload events received
     let mut actual_canonical_events = vec![];
     while let Ok(event) = receiver.try_recv() {
-        if event.event_type == EventType::BlockCanonicityUpdate {
+        if event.event_type == Event::BlockCanonicityUpdate {
             let payload: BlockCanonicityUpdatePayload = sonic_rs::from_str(&event.payload).unwrap();
             actual_canonical_events.push((payload.height, payload.state_hash, payload.canonical));
         }

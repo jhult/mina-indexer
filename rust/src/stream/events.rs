@@ -1,35 +1,39 @@
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum EventType {
-    GenesisBlock,
-    PrecomputedBlockPath,
-    BerkeleyBlockPath,
-    MainnetBlockPath,
-    BlockAncestor,
-    BerkeleyBlock,
-    MainnetBlock,
-    NewBlock,
-    BlockCanonicityUpdate,
-    BestBlock,
-    BlockLog,
-    CanonicalBlockLog,
-    SnarkWorkSummary,
-    SnarkCanonicitySummary,
-    TransitionFrontier,
-    UserCommandLog,
-    CanonicalUserCommandLog,
-    InternalCommandLog,
-    CanonicalInternalCommandLog,
-    DoubleEntryTransaction,
-    NewAccount,
-    BlockConfirmation,
-    PreExistingAccount,
-    ActorHeight,
+use super::{
+    models::Height,
+    payloads::{
+        ActorHeightPayload, BerkeleyBlockPayload, BlockAncestorPayload, BlockCanonicityUpdatePayload, BlockConfirmationPayload, BlockLogPayload,
+        CanonicalBlockLogPayload, CanonicalInternalCommandLogPayload, CanonicalUserCommandLogPayload, DoubleEntryRecordPayload, GenesisBlockPayload,
+        InternalCommandLogPayload, MainnetBlockPayload, NewAccountPayload, NewBlockPayload, SnarkCanonicitySummaryPayload, SnarkWorkSummaryPayload,
+        UserCommandLogPayload,
+    },
+};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum Event {
+    GenesisBlock(GenesisBlockPayload),
+    PrecomputedBlockPath(String),
+    BerkeleyBlockPath(String),
+    MainnetBlockPath(String),
+    BlockAncestor(BlockAncestorPayload),
+    BerkeleyBlock(BerkeleyBlockPayload),
+    MainnetBlock(MainnetBlockPayload),
+    NewBlock(NewBlockPayload),
+    BlockCanonicityUpdate(BlockCanonicityUpdatePayload),
+    BestBlock(BlockCanonicityUpdatePayload),
+    BlockLog(BlockLogPayload),
+    CanonicalBlockLog(CanonicalBlockLogPayload),
+    SnarkWorkSummary(SnarkWorkSummaryPayload),
+    SnarkCanonicitySummary(SnarkCanonicitySummaryPayload),
+    TransitionFrontier(u64),
+    UserCommandLog(UserCommandLogPayload),
+    CanonicalUserCommandLog(CanonicalUserCommandLogPayload),
+    InternalCommandLog(InternalCommandLogPayload),
+    CanonicalInternalCommandLog(CanonicalInternalCommandLogPayload),
+    DoubleEntryTransaction(DoubleEntryRecordPayload),
+    NewAccount(NewAccountPayload),
+    BlockConfirmation(BlockConfirmationPayload),
+    PreExistingAccount(String),
+    ActorHeight(ActorHeightPayload),
     EpochStakeDelegation,
     HeightSpread,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Event {
-    pub event_type: EventType,
-    pub payload: String,
 }

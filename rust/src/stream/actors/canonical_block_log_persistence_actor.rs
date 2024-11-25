@@ -1,30 +1,35 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
 use crate::{
     constants::POSTGRES_CONNECTION_STRING,
-    stream::{db_logger::DbLogger, payloads::*},
+    stream::{db_logger::DbLogger, events::Event, payloads::ActorHeightPayload},
 };
-use anyhow::Result;
-use async_trait::async_trait;
 use futures::lock::Mutex;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use std::sync::Arc;
 use tokio_postgres::NoTls;
 
 pub struct CanonicalBlockLogPersistenceActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub db_logger: Arc<Mutex<DbLogger>>,
-    pub database_inserts: AtomicUsize,
+    db_logger: Arc<Mutex<DbLogger>>,
 }
 
 impl CanonicalBlockLogPersistenceActor {
-    pub async fn new(shared_publisher: Arc<SharedPublisher>, root_node: &Option<(u64, String)>) -> Self {
+    pub fn new() -> Self {
+        Self {
+            db_logger: Arc::new(Mutex::new(DbLogger::default())),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Actor for CanonicalBlockLogPersistenceActor {
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
         let (client, connection) = tokio_postgres::connect(POSTGRES_CONNECTION_STRING, NoTls)
             .await
-            .expect("Unable to establish connection to database");
+            .map_err(|_| ActorProcessingErr::from("Unable to establish connection to database"))?;
+
         tokio::spawn(async move {
             if let Err(e) = connection.await {
                 eprintln!("connection error: {}", e);
@@ -46,109 +51,58 @@ impl CanonicalBlockLogPersistenceActor {
             .add_column("is_berkeley_block BOOLEAN")
             .add_column("canonical BOOLEAN")
             .distinct_columns(&["height", "state_hash"])
-            .build(root_node)
+            .build(&None)
             .await
-            .expect("Failed to build blocks_log and blocks view");
+            .map_err(|_| ActorProcessingErr::from("Failed to build blocks_log and blocks view"))?;
 
-        if let Some((height, state_hash)) = root_node {
-            if let Err(e) = logger
-                .get_client()
-                .execute(
-                    "DELETE FROM blocks_log WHERE height > $1 AND (height = $1 AND state_hash = $2)",
-                    &[&(height.to_owned() as i64), state_hash],
-                )
-                .await
-            {
-                eprintln!("Unable to drop data: {}", e);
-            }
-        }
-
-        Self {
-            id: "CanonicalBlockLogActor".to_string(),
-            shared_publisher,
-            db_logger: Arc::new(Mutex::new(logger)),
-            database_inserts: AtomicUsize::new(0),
-        }
+        *self.db_logger.lock().await = logger;
+        Ok(parent)
     }
 
-    async fn log(&self, payload: &CanonicalBlockLogPayload) -> Result<(), &'static str> {
-        let logger = self.db_logger.lock().await;
-        logger
-            .insert(
-                &[
-                    &(payload.height as i64),
-                    &payload.state_hash,
-                    &payload.previous_state_hash,
-                    &(payload.user_command_count as i32),
-                    &(payload.snark_work_count as i32),
-                    &(payload.timestamp as i64),
-                    &payload.coinbase_receiver,
-                    &(payload.coinbase_reward_nanomina as i64),
-                    &(payload.global_slot_since_genesis as i64),
-                    &payload.last_vrf_output,
-                    &payload.is_berkeley_block,
-                    &payload.canonical,
-                ],
-                payload.height,
-            )
-            .await
-            .map_err(|_| "Unable to insert into canonical_block_log table")?;
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        if let Event::CanonicalBlockLog(log) = msg {
+            let logger = self.db_logger.lock().await;
+            logger
+                .insert(&[
+                    &(log.height as i64),
+                    &log.state_hash,
+                    &log.previous_state_hash,
+                    &(log.user_command_count as i32),
+                    &(log.snark_work_count as i32),
+                    &(log.timestamp as i64),
+                    &log.coinbase_receiver,
+                    &(log.coinbase_reward_nanomina as i64),
+                    &(log.global_slot_since_genesis as i64),
+                    &log.last_vrf_output,
+                    &log.is_berkeley_block,
+                    &log.canonical,
+                ])
+                .await
+                .map_err(|_| ActorProcessingErr::from("Unable to insert into canonical_block_log table"))?;
 
+            let actor_height = ActorHeightPayload {
+                actor: "CanonicalBlockLogPersistenceActor".to_string(),
+                height: log.height,
+            };
+            state.cast(Event::ActorHeight(actor_height))?;
+        }
         Ok(())
     }
 }
 
-#[async_trait]
-impl Actor for CanonicalBlockLogPersistenceActor {
-    fn id(&self) -> String {
-        self.id.clone()
-    }
-
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.database_inserts
-    }
-
-    async fn handle_event(&self, event: Event) {
-        if event.event_type == EventType::CanonicalBlockLog {
-            let log: CanonicalBlockLogPayload = sonic_rs::from_str(&event.payload).unwrap();
-            self.log(&log).await.unwrap();
-            self.database_inserts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            self.publish(Event {
-                event_type: EventType::ActorHeight,
-                payload: sonic_rs::to_string(&ActorHeightPayload {
-                    actor: self.id(),
-                    height: log.height,
-                })
-                .unwrap(),
-            });
-        }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
-    }
-}
-
 #[cfg(test)]
-mod canonical_block_log_persistence_tests {
+mod tests {
     use super::*;
-    use crate::stream::events::{Event, EventType};
-    use std::sync::Arc;
-    use tokio::sync::broadcast;
-
-    async fn setup_actor() -> (CanonicalBlockLogPersistenceActor, Arc<SharedPublisher>, broadcast::Receiver<Event>) {
-        let shared_publisher = Arc::new(SharedPublisher::new(100));
-        let receiver = shared_publisher.subscribe();
-
-        let actor = CanonicalBlockLogPersistenceActor::new(Arc::clone(&shared_publisher), &None).await;
-
-        (actor, shared_publisher, receiver)
-    }
+    use crate::stream::{
+        payloads::{ActorHeightPayload, CanonicalBlockLogPayload},
+        test_utils::setup_test_actors,
+    };
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
 
     #[tokio::test]
-    async fn test_insert_canonical_block_log() {
-        let (actor, _shared_publisher, _receiver) = setup_actor().await;
+    async fn test_insert_canonical_block_log() -> anyhow::Result<()> {
+        let actor = setup_test_actors(CanonicalBlockLogPersistenceActor::new()).await;
 
         let payload = CanonicalBlockLogPayload {
             height: 100,
@@ -165,15 +119,24 @@ mod canonical_block_log_persistence_tests {
             canonical: true,
         };
 
-        actor.log(&payload).await.unwrap();
+        let response = actor.call(|_| Event::CanonicalBlockLog(payload.clone()), Some(Duration::from_secs(1))).await?;
 
-        let query = "SELECT * FROM blocks_log WHERE height = $1 AND state_hash = $2 AND timestamp = $3";
+        match response {
+            CallResult::Success(Event::ActorHeight(height_payload)) => {
+                assert_eq!(height_payload.height, payload.height);
+                assert_eq!(height_payload.actor, "CanonicalBlockLogPersistenceActor");
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
+
         let db_logger = actor.db_logger.lock().await;
+        let query = "SELECT * FROM blocks_log WHERE height = $1 AND state_hash = $2 AND timestamp = $3";
         let row = db_logger
             .get_client()
             .query_one(query, &[&(payload.height as i64), &payload.state_hash, &(payload.timestamp as i64)])
-            .await
-            .unwrap();
+            .await?;
 
         assert_eq!(row.get::<_, i64>("height"), payload.height as i64);
         assert_eq!(row.get::<_, String>("state_hash"), payload.state_hash);
@@ -187,63 +150,14 @@ mod canonical_block_log_persistence_tests {
         assert_eq!(row.get::<_, String>("last_vrf_output"), payload.last_vrf_output);
         assert_eq!(row.get::<_, bool>("is_berkeley_block"), payload.is_berkeley_block);
         assert_eq!(row.get::<_, bool>("canonical"), payload.canonical);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_handle_event_canonical_block_log() {
-        let (actor, _, _) = setup_actor().await;
+    async fn test_canonical_blocks_canonical_block_log() -> anyhow::Result<()> {
+        let actor = setup_test_actors(CanonicalBlockLogPersistenceActor::new()).await;
 
-        let payload = CanonicalBlockLogPayload {
-            height: 200,
-            state_hash: "state_hash_200".to_string(),
-            previous_state_hash: "state_hash_199".to_string(),
-            user_command_count: 7,
-            snark_work_count: 2,
-            timestamp: 987654321,
-            coinbase_receiver: "another_receiver".to_string(),
-            coinbase_reward_nanomina: 2000,
-            global_slot_since_genesis: 100,
-            last_vrf_output: "another_vrf_output".to_string(),
-            is_berkeley_block: false,
-            canonical: false,
-        };
-
-        let event = Event {
-            event_type: EventType::CanonicalBlockLog,
-            payload: sonic_rs::to_string(&payload).unwrap(),
-        };
-
-        actor.handle_event(event).await;
-
-        let query = "SELECT * FROM blocks_log WHERE height = $1 AND state_hash = $2 AND timestamp = $3";
-        let db_logger = actor.db_logger.lock().await;
-        let row = db_logger
-            .get_client()
-            .query_one(query, &[&(payload.height as i64), &payload.state_hash, &(payload.timestamp as i64)])
-            .await
-            .unwrap();
-
-        assert_eq!(row.get::<_, i64>("height"), payload.height as i64);
-        assert_eq!(row.get::<_, String>("state_hash"), payload.state_hash);
-        assert_eq!(row.get::<_, String>("previous_state_hash"), payload.previous_state_hash);
-        assert_eq!(row.get::<_, i32>("user_command_count"), payload.user_command_count as i32);
-        assert_eq!(row.get::<_, i32>("snark_work_count"), payload.snark_work_count as i32);
-        assert_eq!(row.get::<_, i64>("timestamp"), payload.timestamp as i64);
-        assert_eq!(row.get::<_, String>("coinbase_receiver"), payload.coinbase_receiver);
-        assert_eq!(row.get::<_, i64>("coinbase_reward_nanomina"), payload.coinbase_reward_nanomina as i64);
-        assert_eq!(row.get::<_, i64>("global_slot_since_genesis"), payload.global_slot_since_genesis as i64);
-        assert_eq!(row.get::<_, String>("last_vrf_output"), payload.last_vrf_output);
-        assert_eq!(row.get::<_, bool>("is_berkeley_block"), payload.is_berkeley_block);
-        assert_eq!(row.get::<_, bool>("canonical"), payload.canonical);
-    }
-
-    #[tokio::test]
-    async fn test_canonical_blocks_canonical_block_log() {
-        // Set up the actor and database connection
-        let shared_publisher = Arc::new(SharedPublisher::new(100));
-        let actor = CanonicalBlockLogPersistenceActor::new(Arc::clone(&shared_publisher), &None).await;
-
-        // Insert multiple entries for the same (height, state_hash) with different canonicities
         let payload1 = CanonicalBlockLogPayload {
             height: 1,
             state_hash: "hash_1".to_string(),
@@ -262,69 +176,30 @@ mod canonical_block_log_persistence_tests {
         let mut payload2 = payload1.clone();
         payload2.canonical = true;
 
-        // Insert the payloads into the database
-        actor.log(&payload1).await.unwrap();
-        actor.log(&payload1).await.unwrap();
-        actor.log(&payload2).await.unwrap();
+        let response = actor.call(|_| Event::CanonicalBlockLog(payload1), Some(Duration::from_secs(1))).await?;
 
-        // Query the canonical_block_log view
-        let query = "SELECT * FROM blocks WHERE height = $1";
+        match response {
+            CallResult::Success(Event::ActorHeight(_)) => {}
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
+
+        let response = actor.call(|_| Event::CanonicalBlockLog(payload2.clone()), Some(Duration::from_secs(1))).await?;
+
+        match response {
+            CallResult::Success(Event::ActorHeight(_)) => {}
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
+
         let db_logger = actor.db_logger.lock().await;
-        let rows = db_logger.get_client().query(query, &[&1_i64]).await.unwrap();
+        let query = "SELECT * FROM blocks WHERE height = $1";
+        let rows = db_logger.get_client().query(query, &[&1_i64]).await?;
         assert_eq!(rows.len(), 1);
 
-        let row_last = rows.last().unwrap();
-
-        // Validate the returned row matches the payload with the highest entry_id
-        assert_eq!(row_last.get::<_, i64>("height"), payload2.height as i64);
-        assert_eq!(row_last.get::<_, String>("state_hash"), payload2.state_hash);
-        assert_eq!(row_last.get::<_, String>("previous_state_hash"), payload2.previous_state_hash);
-        assert_eq!(row_last.get::<_, i32>("user_command_count"), payload2.user_command_count as i32);
-        assert_eq!(row_last.get::<_, i32>("snark_work_count"), payload2.snark_work_count as i32);
-        assert_eq!(row_last.get::<_, i64>("timestamp"), payload2.timestamp as i64);
-        assert_eq!(row_last.get::<_, String>("coinbase_receiver"), payload2.coinbase_receiver);
-        assert_eq!(row_last.get::<_, i64>("coinbase_reward_nanomina"), payload2.coinbase_reward_nanomina as i64);
-        assert_eq!(row_last.get::<_, i64>("global_slot_since_genesis"), payload2.global_slot_since_genesis as i64);
-        assert_eq!(row_last.get::<_, String>("last_vrf_output"), payload2.last_vrf_output);
-        assert_eq!(row_last.get::<_, bool>("is_berkeley_block"), payload2.is_berkeley_block);
-        assert_eq!(row_last.get::<_, bool>("canonical"), payload2.canonical);
-    }
-
-    #[tokio::test]
-    async fn test_canonical_blocks_view() {
-        // Set up the actor and database connection
-        let shared_publisher = Arc::new(SharedPublisher::new(100));
-        let actor = CanonicalBlockLogPersistenceActor::new(Arc::clone(&shared_publisher), &None).await;
-
-        // Insert multiple entries for the same (height, state_hash) with different canonicities
-        let payload1 = CanonicalBlockLogPayload {
-            height: 1,
-            state_hash: "hash_1".to_string(),
-            previous_state_hash: "prev_hash".to_string(),
-            user_command_count: 10,
-            snark_work_count: 2,
-            timestamp: 1234567890,
-            coinbase_receiver: "receiver_1".to_string(),
-            coinbase_reward_nanomina: 1000,
-            global_slot_since_genesis: 100,
-            last_vrf_output: "vrf_output_1".to_string(),
-            is_berkeley_block: false,
-            canonical: false,
-        };
-
-        let mut payload2 = payload1.clone();
-        payload2.canonical = true;
-
-        // Insert the payloads into the database
-        actor.log(&payload1).await.unwrap();
-        actor.log(&payload2).await.unwrap();
-
-        // Query the blocks view
-        let query = "SELECT * FROM blocks WHERE height = $1";
-        let db_logger = actor.db_logger.lock().await;
-        let row = db_logger.get_client().query_one(query, &[&1_i64]).await.unwrap();
-
-        // Validate the returned row matches the payload with the highest entry_id
+        let row = rows.first().unwrap();
         assert_eq!(row.get::<_, i64>("height"), payload2.height as i64);
         assert_eq!(row.get::<_, String>("state_hash"), payload2.state_hash);
         assert_eq!(row.get::<_, String>("previous_state_hash"), payload2.previous_state_hash);
@@ -337,13 +212,74 @@ mod canonical_block_log_persistence_tests {
         assert_eq!(row.get::<_, String>("last_vrf_output"), payload2.last_vrf_output);
         assert_eq!(row.get::<_, bool>("is_berkeley_block"), payload2.is_berkeley_block);
         assert_eq!(row.get::<_, bool>("canonical"), payload2.canonical);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_actor_height_event_published() {
-        let (actor, _, mut receiver) = setup_actor().await;
+    async fn test_canonical_blocks_view() -> anyhow::Result<()> {
+        let actor = setup_test_actors(CanonicalBlockLogPersistenceActor::new()).await;
 
-        // Create a payload for a canonical block log
+        let payload1 = CanonicalBlockLogPayload {
+            height: 1,
+            state_hash: "hash_1".to_string(),
+            previous_state_hash: "prev_hash".to_string(),
+            user_command_count: 10,
+            snark_work_count: 2,
+            timestamp: 1234567890,
+            coinbase_receiver: "receiver_1".to_string(),
+            coinbase_reward_nanomina: 1000,
+            global_slot_since_genesis: 100,
+            last_vrf_output: "vrf_output_1".to_string(),
+            is_berkeley_block: false,
+            canonical: false,
+        };
+
+        let mut payload2 = payload1.clone();
+        payload2.canonical = true;
+
+        let response = actor.call(|_| Event::CanonicalBlockLog(payload1), Some(Duration::from_secs(1))).await?;
+
+        match response {
+            CallResult::Success(Event::ActorHeight(_)) => {}
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
+
+        let response = actor.call(|_| Event::CanonicalBlockLog(payload2.clone()), Some(Duration::from_secs(1))).await?;
+
+        match response {
+            CallResult::Success(Event::ActorHeight(_)) => {}
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
+
+        let db_logger = actor.db_logger.lock().await;
+        let query = "SELECT * FROM blocks WHERE height = $1";
+        let row = db_logger.get_client().query_one(query, &[&1_i64]).await?;
+
+        assert_eq!(row.get::<_, i64>("height"), payload2.height as i64);
+        assert_eq!(row.get::<_, String>("state_hash"), payload2.state_hash);
+        assert_eq!(row.get::<_, String>("previous_state_hash"), payload2.previous_state_hash);
+        assert_eq!(row.get::<_, i32>("user_command_count"), payload2.user_command_count as i32);
+        assert_eq!(row.get::<_, i32>("snark_work_count"), payload2.snark_work_count as i32);
+        assert_eq!(row.get::<_, i64>("timestamp"), payload2.timestamp as i64);
+        assert_eq!(row.get::<_, String>("coinbase_receiver"), payload2.coinbase_receiver);
+        assert_eq!(row.get::<_, i64>("coinbase_reward_nanomina"), payload2.coinbase_reward_nanomina as i64);
+        assert_eq!(row.get::<_, i64>("global_slot_since_genesis"), payload2.global_slot_since_genesis as i64);
+        assert_eq!(row.get::<_, String>("last_vrf_output"), payload2.last_vrf_output);
+        assert_eq!(row.get::<_, bool>("is_berkeley_block"), payload2.is_berkeley_block);
+        assert_eq!(row.get::<_, bool>("canonical"), payload2.canonical);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_actor_height_event_published() -> anyhow::Result<()> {
+        let actor = setup_test_actors(CanonicalBlockLogPersistenceActor::new()).await;
+
         let payload = CanonicalBlockLogPayload {
             height: 300,
             state_hash: "state_hash_300".to_string(),
@@ -359,30 +295,18 @@ mod canonical_block_log_persistence_tests {
             canonical: true,
         };
 
-        // Create and publish the event
-        let event = Event {
-            event_type: EventType::CanonicalBlockLog,
-            payload: sonic_rs::to_string(&payload).unwrap(),
-        };
+        let response = actor.call(|_| Event::CanonicalBlockLog(payload), Some(Duration::from_secs(1))).await?;
 
-        actor.handle_event(event).await;
+        match response {
+            CallResult::Success(Event::ActorHeight(height_payload)) => {
+                assert_eq!(height_payload.actor, "CanonicalBlockLogPersistenceActor");
+                assert_eq!(height_payload.height, 300);
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
-        // Listen for the `ActorHeight` event
-        let received_event = receiver.recv().await.unwrap();
-
-        // Verify the event type is `ActorHeight`
-        assert_eq!(received_event.event_type, EventType::ActorHeight);
-
-        // Deserialize the payload
-        let actor_height_payload: ActorHeightPayload = sonic_rs::from_str(&received_event.payload).unwrap();
-
-        // Validate the `ActorHeightPayload` content
-        assert_eq!(actor_height_payload.actor, actor.id());
-        assert_eq!(actor_height_payload.height, payload.height);
-
-        println!(
-            "ActorHeight event published: actor = {}, height = {}",
-            actor_height_payload.actor, actor_height_payload.height
-        );
+        Ok(())
     }
 }

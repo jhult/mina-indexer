@@ -1,42 +1,25 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
+use super::super::Actor;
+use crate::stream::{
+    events::Event,
+    payloads::{MainnetBlockPayload, SnarkWorkSummaryPayload},
 };
-use crate::stream::payloads::{MainnetBlockPayload, SnarkWorkSummaryPayload};
-use async_trait::async_trait;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{ActorProcessingErr, ActorRef};
 
-pub struct SnarkWorkSummaryActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-}
+pub struct SnarkWorkSummaryActor;
 
-#[allow(dead_code)]
-impl SnarkWorkSummaryActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
-        Self {
-            id: "SnarkWorkSummaryActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
-        }
-    }
-}
-
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for SnarkWorkSummaryActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-    async fn handle_event(&self, event: Event) {
-        match event.event_type {
-            EventType::MainnetBlock => {
-                let block_payload: MainnetBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
+    async fn handle(&self, myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::MainnetBlock(block_payload) => {
                 for snark_job in block_payload.snark_work.iter() {
                     let payload = SnarkWorkSummaryPayload {
                         height: block_payload.height,
@@ -45,22 +28,15 @@ impl Actor for SnarkWorkSummaryActor {
                         prover: snark_job.prover.to_string(),
                         fee_nanomina: snark_job.fee_nanomina,
                     };
-                    self.publish(Event {
-                        event_type: EventType::SnarkWorkSummary,
-                        payload: sonic_rs::to_string(&payload).unwrap(),
-                    });
+                    myself.cast(Event::SnarkWorkSummary(payload));
                 }
             }
-            EventType::BerkeleyBlock => {
+            Event::BerkeleyBlock(block_payload) => {
                 todo!("impl for berkeley block");
             }
             _ => {}
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
@@ -71,7 +47,7 @@ async fn test_snark_work_summary_actor_with_multiple_snarks() -> anyhow::Result<
 
     async fn verify_snark_work_events(receiver: &mut tokio::sync::broadcast::Receiver<Event>, block_payload: &MainnetBlockPayload, counter: &mut usize) {
         while let Ok(event) = receiver.try_recv() {
-            if event.event_type == EventType::SnarkWorkSummary {
+            if event.event_type == Event::SnarkWorkSummary {
                 let published_payload: SnarkWorkSummaryPayload = sonic_rs::from_str(&event.payload).unwrap();
 
                 // Validate that each event matches the expected block height, state hash, and timestamp
@@ -123,7 +99,7 @@ async fn test_snark_work_summary_actor_with_multiple_snarks() -> anyhow::Result<
     // Serialize MainnetBlockPayload to JSON for the event payload
     let payload_json = sonic_rs::to_string(&block_payload).unwrap();
     let event = Event {
-        event_type: EventType::MainnetBlock,
+        event_type: Event::MainnetBlock,
         payload: payload_json,
     };
 

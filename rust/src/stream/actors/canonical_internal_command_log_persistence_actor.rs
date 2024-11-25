@@ -1,33 +1,27 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
 use crate::{
     constants::POSTGRES_CONNECTION_STRING,
-    stream::{
-        db_logger::DbLogger,
-        payloads::{ActorHeightPayload, CanonicalInternalCommandLogPayload},
-    },
+    stream::{db_logger::DbLogger, events::Event, payloads::*},
 };
-use anyhow::Result;
-use async_trait::async_trait;
 use futures::lock::Mutex;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use std::sync::Arc;
 use tokio_postgres::NoTls;
 
 pub struct CanonicalInternalCommandLogPersistenceActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub database_inserts: AtomicUsize,
-    pub db_logger: Arc<Mutex<DbLogger>>,
+    db_logger: Arc<Mutex<DbLogger>>,
 }
 
-impl CanonicalInternalCommandLogPersistenceActor {
-    pub async fn new(shared_publisher: Arc<SharedPublisher>, root_node: &Option<(u64, String)>) -> Self {
+#[async_trait::async_trait]
+impl Actor for CanonicalInternalCommandLogPersistenceActor {
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = Option<(u64, String)>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
         let (client, connection) = tokio_postgres::connect(POSTGRES_CONNECTION_STRING, NoTls)
             .await
-            .expect("Unable to connect to database");
+            .map_err(|_| ActorProcessingErr::from("Unable to connect to database"))?;
+
         tokio::spawn(async move {
             if let Err(e) = connection.await {
                 eprintln!("connection error: {}", e);
@@ -44,92 +38,52 @@ impl CanonicalInternalCommandLogPersistenceActor {
             .add_column("recipient TEXT NOT NULL")
             .add_column("is_canonical BOOLEAN NOT NULL")
             .distinct_columns(&["height", "internal_command_type", "state_hash", "recipient", "amount_nanomina"])
-            .build(root_node)
+            .build(&args)
             .await
-            .expect("Failed to build internal_commands_log and internal_commands view");
+            .map_err(|_| ActorProcessingErr::from("Failed to build internal_commands_log and internal_commands view"))?;
 
-        Self {
-            id: "CanonicalInternalCommandLogPersistenceActor".to_string(),
-            shared_publisher,
+        Ok(Self {
             db_logger: Arc::new(Mutex::new(logger)),
-            database_inserts: AtomicUsize::new(0),
-        }
+        })
     }
 
-    async fn log(&self, payload: &CanonicalInternalCommandLogPayload) -> Result<u64, &'static str> {
-        let logger = self.db_logger.lock().await;
-        match logger
-            .insert(
-                &[
-                    &payload.internal_command_type.to_string(),
-                    &(payload.height as i64),
-                    &payload.state_hash,
-                    &(payload.timestamp as i64),
-                    &(payload.amount_nanomina as i64),
-                    &payload.recipient,
-                    &payload.canonical,
-                ],
-                payload.height,
-            )
-            .await
-        {
-            Err(e) => {
-                let msg = e.to_string();
-                println!("{}", msg);
-                Err("unable to upsert into canonical_internal_commands_log table")
-            }
-            Ok(affected_rows) => Ok(affected_rows),
-        }
-    }
-}
+    async fn handle(&self, ctx: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::CanonicalInternalCommandLog(payload) => {
+                let logger = self.db_logger.lock().await;
+                let affected_rows = logger
+                    .insert(&[
+                        &payload.internal_command_type.to_string(),
+                        &(payload.height as i64),
+                        &payload.state_hash,
+                        &(payload.timestamp as i64),
+                        &(payload.amount_nanomina as i64),
+                        &payload.recipient,
+                        &payload.canonical,
+                    ])
+                    .await
+                    .map_err(|_| ActorProcessingErr::from("Unable to insert into canonical_internal_commands_log table"))?;
 
-#[async_trait]
-impl Actor for CanonicalInternalCommandLogPersistenceActor {
-    fn id(&self) -> String {
-        self.id.clone()
-    }
-
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.database_inserts
-    }
-
-    async fn handle_event(&self, event: Event) {
-        if event.event_type == EventType::CanonicalInternalCommandLog {
-            let event_payload: CanonicalInternalCommandLogPayload = sonic_rs::from_str(&event.payload).unwrap();
-            match self.log(&event_payload).await {
-                Ok(affected_rows) => {
-                    assert_eq!(affected_rows, 1);
-                    self.shared_publisher.incr_database_insert();
-                    self.actor_outputs().fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    self.publish(Event {
-                        event_type: EventType::ActorHeight,
-                        payload: sonic_rs::to_string(&ActorHeightPayload {
-                            actor: self.id(),
-                            height: event_payload.height,
-                        })
-                        .unwrap(),
-                    });
+                if affected_rows != 1 {
+                    return Err(ActorProcessingErr::from("Expected exactly one row to be affected"));
                 }
-                Err(e) => {
-                    panic!("{}", e);
-                }
-            }
-        }
-    }
 
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+                let actor_height = ActorHeightPayload {
+                    actor: "CanonicalInternalCommandLogPersistenceActor".to_string(),
+                    height: payload.height,
+                };
+                state.cast(Event::ActorHeight(actor_height))?;
+            }
+            _ => {}
+        }
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod canonical_internal_command_log_tests {
     use super::*;
-    use crate::stream::{
-        events::{Event, EventType},
-        payloads::InternalCommandType,
-    };
+    use crate::stream::{events::Event, payloads::InternalCommandType};
     use std::sync::Arc;
     use tokio::sync::broadcast;
 
@@ -198,7 +152,7 @@ mod canonical_internal_command_log_tests {
         };
 
         let event = Event {
-            event_type: EventType::CanonicalInternalCommandLog,
+            event_type: Event::CanonicalInternalCommandLog,
             payload: sonic_rs::to_string(&payload).unwrap(),
         };
 
@@ -294,7 +248,7 @@ mod canonical_internal_command_log_tests {
 
         // Create and publish the event
         let event = Event {
-            event_type: EventType::CanonicalInternalCommandLog,
+            event_type: Event::CanonicalInternalCommandLog,
             payload: sonic_rs::to_string(&payload).unwrap(),
         };
 
@@ -304,7 +258,7 @@ mod canonical_internal_command_log_tests {
         let received_event = receiver.recv().await.unwrap();
 
         // Verify the event type is `ActorHeight`
-        assert_eq!(received_event.event_type, EventType::ActorHeight);
+        assert_eq!(received_event.event_type, Event::ActorHeight);
 
         // Deserialize the payload
         let actor_height_payload: ActorHeightPayload = sonic_rs::from_str(&received_event.payload).unwrap();
