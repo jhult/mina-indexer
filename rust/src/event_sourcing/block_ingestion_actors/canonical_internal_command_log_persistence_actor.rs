@@ -1,34 +1,33 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
 use crate::{
     constants::POSTGRES_CONNECTION_STRING,
-    event_sourcing::{
-        db_logger::DbLogger,
-        payloads::{ActorHeightPayload, CanonicalInternalCommandLogPayload},
-    },
+    event_sourcing::{db_logger::DbLogger, events::Event, payloads::*},
 };
-use anyhow::Result;
-use async_trait::async_trait;
 use futures::lock::Mutex;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use std::sync::Arc;
 use tokio_postgres::NoTls;
 
 pub struct CanonicalInternalCommandLogPersistenceActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub database_inserts: AtomicUsize,
-    pub db_logger: Arc<Mutex<DbLogger>>,
-    pub modulo_10: u64,
+    db_logger: Arc<Mutex<DbLogger>>,
 }
 
-impl CanonicalInternalCommandLogPersistenceActor {
-    pub async fn new(shared_publisher: Arc<SharedPublisher>, root_node: &Option<(u64, String)>, modulo_10: u64) -> Self {
+impl Default for CanonicalInternalCommandLogPersistenceActor {
+    fn default() -> Self {
+        todo!()
+    }
+}
+
+#[async_trait::async_trait]
+impl Actor for CanonicalInternalCommandLogPersistenceActor {
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = Option<(u64, String)>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
         let (client, connection) = tokio_postgres::connect(POSTGRES_CONNECTION_STRING, NoTls)
             .await
-            .expect("Unable to connect to database");
+            .map_err(|_| ActorProcessingErr::from("Unable to connect to database"))?;
+
         tokio::spawn(async move {
             if let Err(e) = connection.await {
                 eprintln!("connection error: {}", e);
@@ -45,118 +44,62 @@ impl CanonicalInternalCommandLogPersistenceActor {
             .add_column("recipient TEXT NOT NULL")
             .add_column("is_canonical BOOLEAN NOT NULL")
             .distinct_columns(&["height", "internal_command_type", "state_hash", "recipient", "amount_nanomina"])
-            .build(root_node)
+            .build(&args)
             .await
-            .expect("Failed to build internal_commands_log and internal_commands view");
+            .map_err(|_| ActorProcessingErr::from("Failed to build internal_commands_log and internal_commands view"))?;
 
-        Self {
-            id: "CanonicalInternalCommandLogPersistenceActor".to_string(),
-            shared_publisher,
+        Ok(Self {
             db_logger: Arc::new(Mutex::new(logger)),
-            database_inserts: AtomicUsize::new(0),
-            modulo_10,
-        }
+        })
     }
 
-    async fn log(&self, payload: &CanonicalInternalCommandLogPayload) -> Result<u64, &'static str> {
-        let logger = self.db_logger.lock().await;
-        match logger
-            .insert(
-                &[
-                    &payload.internal_command_type.to_string(),
-                    &(payload.height as i64),
-                    &payload.state_hash,
-                    &(payload.timestamp as i64),
-                    &(payload.amount_nanomina as i64),
-                    &payload.recipient,
-                    &payload.canonical,
-                ],
-                payload.height,
-            )
-            .await
-        {
-            Err(e) => {
-                let msg = e.to_string();
-                println!("{}", msg);
-                Err("unable to upsert into canonical_internal_commands_log table")
-            }
-            Ok(affected_rows) => Ok(affected_rows),
-        }
-    }
-}
+    async fn handle(&self, ctx: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::CanonicalInternalCommandLog(payload) => {
+                let logger = self.db_logger.lock().await;
+                let affected_rows = logger
+                    .insert(
+                        &[
+                            &payload.internal_command_type.to_string(),
+                            &(payload.height as i64),
+                            &payload.state_hash,
+                            &(payload.timestamp as i64),
+                            &(payload.amount_nanomina as i64),
+                            &payload.recipient,
+                            &payload.canonical,
+                        ],
+                        payload.height,
+                    )
+                    .await
+                    .map_err(|_| ActorProcessingErr::from("Unable to insert into canonical_internal_commands_log table"))?;
 
-#[async_trait]
-impl Actor for CanonicalInternalCommandLogPersistenceActor {
-    fn id(&self) -> String {
-        self.id.clone()
-    }
-
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.database_inserts
-    }
-
-    async fn handle_event(&self, event: Event) {
-        if event.event_type == EventType::CanonicalInternalCommandLog {
-            let event_payload: CanonicalInternalCommandLogPayload = sonic_rs::from_str(&event.payload).unwrap();
-            if event_payload.height % 10 != self.modulo_10 {
-                return;
-            }
-            match self.log(&event_payload).await {
-                Ok(affected_rows) => {
-                    assert_eq!(affected_rows, 1);
-                    self.shared_publisher.incr_database_insert();
-                    self.actor_outputs().fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    self.publish(Event {
-                        event_type: EventType::ActorHeight,
-                        payload: sonic_rs::to_string(&ActorHeightPayload {
-                            actor: self.id(),
-                            height: event_payload.height,
-                        })
-                        .unwrap(),
-                    });
+                if affected_rows != 1 {
+                    return Err(ActorProcessingErr::from("Expected exactly one row to be affected"));
                 }
-                Err(e) => {
-                    panic!("{}", e);
-                }
-            }
-        }
-    }
 
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+                let actor_height = ActorHeightPayload {
+                    actor: "CanonicalInternalCommandLogPersistenceActor".to_string(),
+                    height: payload.height,
+                };
+                state.cast(Event::ActorHeight(actor_height))?;
+            }
+            _ => {}
+        }
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod canonical_internal_command_log_tests {
     use super::*;
-    use crate::event_sourcing::{
-        events::{Event, EventType},
-        payloads::InternalCommandType,
-    };
-    use std::sync::Arc;
-    use tokio::sync::broadcast;
-
-    async fn setup_actor() -> (
-        Vec<CanonicalInternalCommandLogPersistenceActor>,
-        Arc<SharedPublisher>,
-        broadcast::Receiver<Event>,
-    ) {
-        let shared_publisher = Arc::new(SharedPublisher::new(100));
-        let receiver = shared_publisher.subscribe();
-
-        let mut actors = vec![];
-        for i in 0..=9 {
-            actors.push(CanonicalInternalCommandLogPersistenceActor::new(Arc::clone(&shared_publisher), &None, i).await);
-        }
-
-        (actors, shared_publisher, receiver)
-    }
+    use crate::event_sourcing::{payloads::InternalCommandType, test_utils::setup_test_actors};
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
 
     #[tokio::test]
-    async fn test_insert_canonical_internal_command_log() {
-        let (actors, _shared_publisher, _receiver) = setup_actor().await;
+    async fn test_insert_canonical_internal_command_log() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(CanonicalInternalCommandLogPersistenceActor::default()).await;
 
         let payload = CanonicalInternalCommandLogPayload {
             internal_command_type: InternalCommandType::FeeTransfer,
@@ -170,32 +113,28 @@ mod canonical_internal_command_log_tests {
             was_canonical: false,
         };
 
-        let affected_rows = actors[0].log(&payload).await.unwrap();
+        let response = actor
+            .call(|_| Event::CanonicalInternalCommandLog(payload.clone()), Some(Duration::from_secs(1)))
+            .await?;
 
         // Validate that exactly one row was affected
-        assert_eq!(affected_rows, 1);
+        match response {
+            CallResult::Success(Event::ActorHeight(actor_height_payload)) => {
+                assert_eq!(actor_height_payload.height, payload.height);
+                assert_eq!(actor_height_payload.actor, "CanonicalInternalCommandLogPersistenceActor");
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
-        // Validate the data was correctly inserted into the table
-        let query = "SELECT * FROM internal_commands_log WHERE height = $1 AND state_hash = $2 AND recipient = $3";
-        let logger = actors[0].db_logger.lock().await;
-        let row = logger
-            .get_client()
-            .query_one(query, &[&(payload.height as i64), &payload.state_hash, &payload.recipient])
-            .await
-            .unwrap();
-
-        assert_eq!(row.get::<_, String>("internal_command_type"), payload.internal_command_type.to_string());
-        assert_eq!(row.get::<_, i64>("height"), payload.height as i64);
-        assert_eq!(row.get::<_, String>("state_hash"), payload.state_hash);
-        assert_eq!(row.get::<_, i64>("timestamp"), payload.timestamp as i64);
-        assert_eq!(row.get::<_, i64>("amount_nanomina"), payload.amount_nanomina as i64);
-        assert_eq!(row.get::<_, String>("recipient"), payload.recipient);
-        assert_eq!(row.get::<_, bool>("is_canonical"), payload.canonical);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_handle_event_canonical_internal_command_log() {
-        let (actors, _, _) = setup_actor().await;
+    async fn test_handle_event_canonical_internal_command_log() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(CanonicalInternalCommandLogPersistenceActor::default()).await;
 
         let payload = CanonicalInternalCommandLogPayload {
             internal_command_type: InternalCommandType::Coinbase,
@@ -209,36 +148,31 @@ mod canonical_internal_command_log_tests {
             source: None,
         };
 
-        let event = Event {
-            event_type: EventType::CanonicalInternalCommandLog,
-            payload: sonic_rs::to_string(&payload).unwrap(),
-        };
+        let response = actor
+            .call(|_| Event::CanonicalInternalCommandLog(payload.clone()), Some(Duration::from_secs(1)))
+            .await?;
 
-        actors[0].handle_event(event).await;
+        // Validate the response
+        match response {
+            CallResult::Success(Event::ActorHeight(actor_height_payload)) => {
+                assert_eq!(actor_height_payload.height, payload.height);
+                assert_eq!(actor_height_payload.actor, "CanonicalInternalCommandLogPersistenceActor");
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
-        // Validate the data was correctly inserted into the table
-        let query = "SELECT * FROM internal_commands_log WHERE height = $1 AND state_hash = $2 AND recipient = $3";
-        let logger = actors[0].db_logger.lock().await;
-        let row = logger
-            .get_client()
-            .query_one(query, &[&(payload.height as i64), &payload.state_hash, &payload.recipient])
-            .await
-            .unwrap();
-
-        assert_eq!(row.get::<_, String>("internal_command_type"), payload.internal_command_type.to_string());
-        assert_eq!(row.get::<_, i64>("height"), payload.height as i64);
-        assert_eq!(row.get::<_, String>("state_hash"), payload.state_hash);
-        assert_eq!(row.get::<_, i64>("timestamp"), payload.timestamp as i64);
-        assert_eq!(row.get::<_, i64>("amount_nanomina"), payload.amount_nanomina as i64);
-        assert_eq!(row.get::<_, String>("recipient"), payload.recipient);
-        assert_eq!(row.get::<_, bool>("is_canonical"), payload.canonical);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_canonical_internal_commands_view() {
-        // Set up the actor and database connection
-        let shared_publisher = Arc::new(SharedPublisher::new(100));
-        let actor = CanonicalInternalCommandLogPersistenceActor::new(Arc::clone(&shared_publisher), &None, 1).await;
+    async fn test_canonical_internal_commands_view() -> anyhow::Result<()> {
+        use crate::event_sourcing::{payloads::InternalCommandType, test_utils::setup_test_actors};
+        use tokio_postgres::NoTls;
+
+        // Setup test actor
+        let actor = setup_test_actors(CanonicalInternalCommandLogPersistenceActor::default()).await;
 
         // Insert multiple entries for the same (height, state_hash, recipient, amount) with different timestamps and canonicalities
         let payload1 = CanonicalInternalCommandLogPayload {
@@ -265,8 +199,22 @@ mod canonical_internal_command_log_tests {
             source: None,
         };
 
-        actor.log(&payload1).await.unwrap();
-        actor.log(&payload2).await.unwrap();
+        actor
+            .handle(
+                ActorRef::default(),
+                Event::CanonicalInternalCommandLog(payload1.clone()),
+                &mut ActorRef::default(),
+            )
+            .await
+            .unwrap();
+        actor
+            .handle(
+                ActorRef::default(),
+                Event::CanonicalInternalCommandLog(payload2.clone()),
+                &mut ActorRef::default(),
+            )
+            .await
+            .unwrap();
 
         // Query the internal_commands view
         let query = "SELECT * FROM internal_commands WHERE height = $1 AND state_hash = $2 AND recipient = $3";
@@ -285,11 +233,14 @@ mod canonical_internal_command_log_tests {
         assert_eq!(row.get::<_, i64>("amount_nanomina"), payload2.amount_nanomina as i64);
         assert_eq!(row.get::<_, String>("recipient"), payload2.recipient);
         assert_eq!(row.get::<_, bool>("is_canonical"), payload2.canonical);
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_actor_height_event_published() {
-        let (actors, _, mut receiver) = setup_actor().await;
+    async fn test_actor_height_event_published() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(CanonicalInternalCommandLogPersistenceActor::default()).await;
 
         // Create a payload for a canonical internal command
         let payload = CanonicalInternalCommandLogPayload {
@@ -304,30 +255,21 @@ mod canonical_internal_command_log_tests {
             was_canonical: false,
         };
 
-        // Create and publish the event
-        let event = Event {
-            event_type: EventType::CanonicalInternalCommandLog,
-            payload: sonic_rs::to_string(&payload).unwrap(),
-        };
-
-        actors[0].handle_event(event).await;
-
-        // Listen for the `ActorHeight` event
-        let received_event = receiver.recv().await.unwrap();
+        let response = actor
+            .call(|_| Event::CanonicalInternalCommandLog(payload.clone()), Some(Duration::from_secs(1)))
+            .await?;
 
         // Verify the event type is `ActorHeight`
-        assert_eq!(received_event.event_type, EventType::ActorHeight);
+        match response {
+            CallResult::Success(Event::ActorHeight(actor_height_payload)) => {
+                assert_eq!(actor_height_payload.height, payload.height);
+                assert_eq!(actor_height_payload.actor, "CanonicalInternalCommandLogPersistenceActor");
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
-        // Deserialize the payload
-        let actor_height_payload: ActorHeightPayload = sonic_rs::from_str(&received_event.payload).unwrap();
-
-        // Validate the `ActorHeightPayload` content
-        assert_eq!(actor_height_payload.actor, actors[0].id());
-        assert_eq!(actor_height_payload.height, payload.height);
-
-        println!(
-            "ActorHeight event published: actor = {}, height = {}",
-            actor_height_payload.actor, actor_height_payload.height
-        );
+        Ok(())
     }
 }

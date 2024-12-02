@@ -218,7 +218,15 @@ pub struct FeeTransferViaCoinbase {
     pub fee: f64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+const EPSILON: f64 = 1e-10;
+impl PartialEq for FeeTransferViaCoinbase {
+    fn eq(&self, other: &Self) -> bool {
+        (self.fee - other.fee).abs() < EPSILON
+    }
+}
+impl Eq for FeeTransferViaCoinbase {}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeeTransfer {
     pub recipient: String,
     pub fee_nanomina: u64,
@@ -268,13 +276,13 @@ pub struct CoinbaseData {
     pub fee: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct CompletedWorks {
     pub fee: String,
     pub prover: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct CompletedWorksNanomina {
     pub fee_nanomina: u64,
     pub prover: String,

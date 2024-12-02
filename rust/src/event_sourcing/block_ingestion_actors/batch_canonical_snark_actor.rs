@@ -1,8 +1,4 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
+use super::super::{events::Event, shared_publisher::SharedPublisher, Actor};
 use crate::{
     constants::TRANSITION_FRONTIER_DISTANCE,
     event_sourcing::{canonical_items_manager::CanonicalItemsManager, payloads::*},
@@ -112,7 +108,7 @@ impl Actor for BulkSnarkCanonicitySummaryActor {
 mod bulk_snark_canonicity_summary_actor_tests {
     use super::*;
     use crate::event_sourcing::{
-        events::{Event, EventType},
+        events::Event,
         mainnet_block_models::CompletedWorksNanomina,
         payloads::{BlockCanonicityUpdatePayload, BulkSnarkCanonicityPayload, MainnetBlockPayload},
     };
@@ -141,12 +137,7 @@ mod bulk_snark_canonicity_summary_actor_tests {
             ],
             ..Default::default()
         };
-        actor
-            .handle_event(Event {
-                event_type: EventType::MainnetBlock,
-                payload: sonic_rs::to_string(&mainnet_block).unwrap(),
-            })
-            .await;
+        actor.handle_event(Event::MainnetBlock(&mainnet_block)).await;
 
         // Add a BlockCanonicityUpdate event for the same height
         let canonicity_update = BlockCanonicityUpdatePayload {
@@ -155,12 +146,7 @@ mod bulk_snark_canonicity_summary_actor_tests {
             canonical: true,
             was_canonical: false,
         };
-        actor
-            .handle_event(Event {
-                event_type: EventType::BlockCanonicityUpdate,
-                payload: sonic_rs::to_string(&canonicity_update).unwrap(),
-            })
-            .await;
+        actor.handle_event(Event::BlockCanonicityUpdate(&canonicity_update)).await;
 
         // Expect the BulkSnarkCanonicity event to be published
         let event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
@@ -204,12 +190,7 @@ mod bulk_snark_canonicity_summary_actor_tests {
             }],
             ..Default::default()
         };
-        actor
-            .handle_event(Event {
-                event_type: EventType::MainnetBlock,
-                payload: sonic_rs::to_string(&mainnet_block).unwrap(),
-            })
-            .await;
+        actor.handle_event(Event::MainnetBlock(&mainnet_block)).await;
 
         // Expect no event to be published
         let no_event = tokio::time::timeout(std::time::Duration::from_millis(100), receiver.recv()).await;
@@ -229,12 +210,7 @@ mod bulk_snark_canonicity_summary_actor_tests {
             canonical: true,
             was_canonical: false,
         };
-        actor
-            .handle_event(Event {
-                event_type: EventType::BlockCanonicityUpdate,
-                payload: sonic_rs::to_string(&canonicity_update).unwrap(),
-            })
-            .await;
+        actor.handle_event(Event::BlockCanonicityUpdate(&canonicity_update)).await;
 
         // Expect no event to be published
         let no_event = tokio::time::timeout(std::time::Duration::from_millis(100), receiver.recv()).await;
@@ -259,12 +235,7 @@ mod bulk_snark_canonicity_summary_actor_tests {
                 }],
                 ..Default::default()
             };
-            actor
-                .handle_event(Event {
-                    event_type: EventType::MainnetBlock,
-                    payload: sonic_rs::to_string(&mainnet_block).unwrap(),
-                })
-                .await;
+            actor.handle_event(Event::MainnetBlock(&mainnet_block)).await;
 
             // Add a BlockCanonicityUpdate event for the same height
             let canonicity_update = BlockCanonicityUpdatePayload {
@@ -273,12 +244,7 @@ mod bulk_snark_canonicity_summary_actor_tests {
                 canonical: true,
                 was_canonical: false,
             };
-            actor
-                .handle_event(Event {
-                    event_type: EventType::BlockCanonicityUpdate,
-                    payload: sonic_rs::to_string(&canonicity_update).unwrap(),
-                })
-                .await;
+            actor.handle_event(Event::BlockCanonicityUpdate(&canonicity_update)).await;
         }
 
         // Validate that two bulk events are published

@@ -1,41 +1,23 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
-use crate::event_sourcing::payloads::{InternalCommandLogPayload, InternalCommandType, MainnetBlockPayload};
-use async_trait::async_trait;
-use std::sync::{atomic::AtomicUsize, Arc};
+use super::super::events::Event;
+use crate::event_sourcing::payloads::{InternalCommandLogPayload, InternalCommandType};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 
-pub struct CoinbaseTransferActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-}
+#[derive(Default)]
+pub struct CoinbaseTransferActor;
 
-impl CoinbaseTransferActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
-        Self {
-            id: "CoinbaseTransferActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
-        }
-    }
-}
-
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for CoinbaseTransferActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-    async fn handle_event(&self, event: Event) {
-        match event.event_type {
-            EventType::MainnetBlock => {
-                let block_payload: MainnetBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::MainnetBlock(block_payload) => {
                 let payload = InternalCommandLogPayload {
                     internal_command_type: InternalCommandType::Coinbase,
                     height: block_payload.height,
@@ -45,20 +27,13 @@ impl Actor for CoinbaseTransferActor {
                     amount_nanomina: block_payload.coinbase_reward_nanomina,
                     source: None,
                 };
-                self.publish(Event {
-                    event_type: EventType::InternalCommandLog,
-                    payload: sonic_rs::to_string(&payload).unwrap(),
-                });
+                state.cast(Event::InternalCommandLog(payload));
             }
-            EventType::BerkeleyBlock => {
+            Event::BerkeleyBlock(block) => {
                 todo!("impl for berkeley block");
             }
             _ => {}
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }

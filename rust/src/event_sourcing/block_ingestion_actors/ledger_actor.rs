@@ -165,7 +165,7 @@ impl Actor for LedgerActor {
 mod blockchain_ledger_actor_tests {
     use super::*;
     use crate::event_sourcing::{
-        events::{Event, EventType},
+        events::Event,
         payloads::{AccountingEntry, AccountingEntryAccountType, AccountingEntryType, DoubleEntryRecordPayload, LedgerDestination},
     };
     // use serial_test::serial;
@@ -329,10 +329,7 @@ mod blockchain_ledger_actor_tests {
         };
 
         // Publish event and process it
-        let event = Event {
-            event_type: EventType::DoubleEntryTransaction,
-            payload: sonic_rs::to_string(&double_entry_payload).unwrap(),
-        };
+        let event = Event::DoubleEntryTransaction(&double_entry_payload);
         actor.handle_event(event).await;
 
         // Query database to validate records
@@ -396,10 +393,7 @@ mod blockchain_ledger_actor_tests {
         };
 
         // Create an event with the payload
-        let event = Event {
-            event_type: EventType::DoubleEntryTransaction,
-            payload: sonic_rs::to_string(&double_entry_payload).unwrap(),
-        };
+        let event = Event::DoubleEntryTransaction(&double_entry_payload);
 
         let mut receiver = shared_publisher.subscribe();
 
@@ -409,7 +403,7 @@ mod blockchain_ledger_actor_tests {
         // Verify that the height was published
         let published_event = receiver.recv().await.expect("No event was published");
 
-        assert_eq!(published_event.event_type, EventType::ActorHeight);
+        assert_eq!(published_event.event_type, Event::ActorHeight);
         let payload: ActorHeightPayload = sonic_rs::from_str(&published_event.payload).expect("Failed to deserialize payload");
         assert_eq!(payload.height, double_entry_payload.height);
 

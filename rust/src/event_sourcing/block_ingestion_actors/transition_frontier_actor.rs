@@ -1,170 +1,153 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
+use crate::{
+    constants::TRANSITION_FRONTIER_DISTANCE,
+    event_sourcing::{events::Event, models::Height, payloads::BlockCanonicityUpdatePayload},
 };
-use crate::{blockchain_tree::Height, constants::TRANSITION_FRONTIER_DISTANCE, event_sourcing::payloads::BlockCanonicityUpdatePayload};
-use async_trait::async_trait;
-use futures::lock::Mutex;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use std::sync::{atomic::AtomicU64, Arc};
 
 pub struct TransitionFrontierActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-    pub transition_frontier: Arc<Mutex<Option<Height>>>,
+    height: Arc<AtomicU64>,
 }
 
-#[allow(dead_code)]
-impl TransitionFrontierActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
+impl Default for TransitionFrontierActor {
+    fn default() -> Self {
         Self {
-            id: "TransitionFrontierActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
-            transition_frontier: Arc::new(Mutex::new(None)),
+            height: Arc::new(AtomicU64::new(0)),
         }
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for TransitionFrontierActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-    async fn handle_event(&self, event: Event) {
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
         fn get_transition_frontier(payload: &BlockCanonicityUpdatePayload) -> u64 {
             payload.height - TRANSITION_FRONTIER_DISTANCE as u64
         }
-        if event.event_type == EventType::BestBlock {
-            let payload: BlockCanonicityUpdatePayload = sonic_rs::from_str(&event.payload).unwrap();
+        if let Event::BestBlock(payload) = msg {
             let mut transition_frontier = self.transition_frontier.lock().await;
 
             match &mut *transition_frontier {
                 Some(tf) if payload.height > tf.0 + TRANSITION_FRONTIER_DISTANCE as u64 => {
                     tf.0 = get_transition_frontier(&payload);
                 }
-                None if payload.height > TRANSITION_FRONTIER_DISTANCE as u64 => {
-                    *transition_frontier = Some(Height(get_transition_frontier(&payload)));
-                }
-                _ => return, // Early return if no action is needed
+                None if payload.height > TRANSITION_FRONTIER_DISTANCE as u64 => *transition_frontier = Some(Height(get_transition_frontier(&payload))),
+                _ => return Ok(()), // Early return if no action is needed
             }
-            self.publish(Event {
-                event_type: EventType::TransitionFrontier,
-                payload: get_transition_frontier(&payload).to_string(),
-            });
+            state.cast(Event::TransitionFrontier(get_transition_frontier(&payload)));
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
-#[tokio::test]
-async fn test_transition_frontier_actor_updates() -> anyhow::Result<()> {
-    use crate::event_sourcing::payloads::BlockCanonicityUpdatePayload;
-    use std::sync::atomic::Ordering;
-
-    // Create a shared publisher and the actor
-    let shared_publisher = Arc::new(SharedPublisher::new(200));
-    let actor = TransitionFrontierActor::new(Arc::clone(&shared_publisher));
-
-    // Subscribe to the shared publisher to capture output events
-    let mut receiver = shared_publisher.subscribe();
-
-    // Initial transition frontier should be None
-    assert!(actor.transition_frontier.lock().await.is_none());
-
-    // Define a BestBlock event payload with height above TRANSITION_FRONTIER_DISTANCE
-    let payload = BlockCanonicityUpdatePayload {
-        height: TRANSITION_FRONTIER_DISTANCE as u64 + 1,
-        state_hash: "some_hash".to_string(),
-        canonical: true,
-        was_canonical: false,
-    };
-
-    // Send the BestBlock event
-    actor
-        .handle_event(Event {
-            event_type: EventType::BestBlock,
-            payload: sonic_rs::to_string(&payload).unwrap(),
-        })
-        .await;
-
-    // Verify that the transition frontier was set correctly
-    let transition_frontier = actor.transition_frontier.lock().await;
-    let transition_frontier = transition_frontier.as_ref().expect("Transition frontier should be set");
-    assert_eq!(transition_frontier.0, payload.height - TRANSITION_FRONTIER_DISTANCE as u64);
-
-    // Confirm that a TransitionFrontier event was published
-    if let Ok(received_event) = receiver.recv().await {
-        assert_eq!(received_event.event_type, EventType::TransitionFrontier);
-        assert_eq!(received_event.payload, (payload.height - TRANSITION_FRONTIER_DISTANCE as u64).to_string());
-    } else {
-        panic!("Expected a TransitionFrontier event but did not receive one.");
-    }
-
-    // Verify that events_published was incremented
-    assert_eq!(actor.events_published.load(Ordering::SeqCst), 1);
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_transition_frontier_actor_no_update_on_lower_height() -> anyhow::Result<()> {
-    use crate::event_sourcing::payloads::BlockCanonicityUpdatePayload;
-    use std::sync::atomic::Ordering;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::event_sourcing::{payloads::ActorHeightPayload, test_utils::setup_test_actors};
+    use ractor::rpc::CallResult;
+    use std::cmp::Ordering;
     use tokio::time::Duration;
 
-    // Create a shared publisher and the actor
-    let shared_publisher = Arc::new(SharedPublisher::new(200));
-    let actor = TransitionFrontierActor::new(Arc::clone(&shared_publisher));
+    #[tokio::test]
+    async fn test_transition_frontier_actor_updates_height() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(TransitionFrontierActor::new()).await;
 
-    // Subscribe to the shared publisher to capture output events
-    let mut receiver = shared_publisher.subscribe();
+        let actor_height = ActorHeightPayload {
+            actor: "TestActor".to_string(),
+            height: 100,
+        };
 
-    // Initialize transition frontier with a specific height
-    let initial_payload = BlockCanonicityUpdatePayload {
-        height: TRANSITION_FRONTIER_DISTANCE as u64 + 10,
-        state_hash: "initial_hash".to_string(),
-        canonical: true,
-        was_canonical: false,
-    };
+        let response = actor.call(|_| Event::ActorHeight(actor_height), Some(Duration::from_secs(1))).await?;
 
-    // Send initial BestBlock event to set the transition frontier
-    actor
-        .handle_event(Event {
-            event_type: EventType::BestBlock,
-            payload: sonic_rs::to_string(&initial_payload).unwrap(),
-        })
-        .await;
+        match response {
+            CallResult::Success(Event::TransitionFrontier(height)) => {
+                assert_eq!(height, 100);
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
-    // Clear any initial events from the receiver
-    while receiver.try_recv().is_ok() {}
+        Ok(())
+    }
 
-    // Send a BestBlock event with a lower height (should not trigger an update)
-    let lower_height_payload = BlockCanonicityUpdatePayload {
-        height: TRANSITION_FRONTIER_DISTANCE as u64 + 5,
-        state_hash: "lower_hash".to_string(),
-        canonical: true,
-        was_canonical: false,
-    };
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    actor
-        .handle_event(Event {
-            event_type: EventType::BestBlock,
-            payload: sonic_rs::to_string(&lower_height_payload).unwrap(),
-        })
-        .await;
+    #[tokio::test]
+    async fn test_transition_frontier_actor_ignores_lower_height() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(TransitionFrontierActor::new()).await;
 
-    // Confirm events_published was incremented only once
-    assert_eq!(actor.events_published.load(Ordering::SeqCst), 1);
+        // Send higher height first
+        let higher_height = ActorHeightPayload {
+            actor: "TestActor".to_string(),
+            height: 100,
+        };
 
-    Ok(())
+        let response = actor.call(|_| Event::ActorHeight(higher_height), Some(Duration::from_secs(1))).await?;
+
+        match response {
+            CallResult::Success(Event::TransitionFrontier(height)) => {
+                assert_eq!(height, 100);
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
+
+        // Send lower height
+        let lower_height = ActorHeightPayload {
+            actor: "TestActor".to_string(),
+            height: 50,
+        };
+
+        let response = actor.call(|_| Event::ActorHeight(lower_height), Some(Duration::from_secs(1))).await?;
+
+        match response {
+            CallResult::Success(Event::ActorHeight(payload)) => {
+                // Verify the height hasn't changed
+                assert_eq!(payload.height.load(Ordering::SeqCst), 100);
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_transition_frontier_actor_multiple_updates() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(TransitionFrontierActor::new()).await;
+
+        for i in 1..=3 {
+            let height = i * 100;
+            let actor_height = ActorHeightPayload {
+                actor: "TestActor".to_string(),
+                height,
+            };
+
+            let response = actor.call(|_| Event::ActorHeight(actor_height), Some(Duration::from_secs(1))).await?;
+
+            match response {
+                CallResult::Success(Event::TransitionFrontier(h)) => {
+                    assert_eq!(h, height);
+                }
+                CallResult::Success(_) => panic!("Received unexpected message type"),
+                CallResult::Timeout => panic!("Call timed out"),
+                CallResult::SenderError => panic!("Call failed"),
+            }
+
+            assert_eq!(actor.height.load(Ordering::SeqCst), height);
+        }
+
+        Ok(())
+    }
 }

@@ -1,23 +1,16 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
+use super::super::events::Event;
 use crate::{constants::POSTGRES_CONNECTION_STRING, event_sourcing::payloads::StakingLedgerEntryPayload};
 use anyhow::Result;
 use async_trait::async_trait;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 use tokio_postgres::{Client, NoTls};
 
 pub struct StakingLedgerEntryPersistenceActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
     pub client: Client,
-    pub database_inserts: AtomicUsize,
 }
 
-impl StakingLedgerEntryPersistenceActor {
-    pub async fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
+impl Default for StakingLedgerEntryPersistenceActor {
+    fn default() -> Self {
         let (client, connection) = tokio_postgres::connect(POSTGRES_CONNECTION_STRING, NoTls)
             .await
             .expect("Unable to establish connection to database");
@@ -29,31 +22,46 @@ impl StakingLedgerEntryPersistenceActor {
         });
 
         if let Err(e) = client.execute("DROP TABLE IF EXISTS staking_ledger CASCADE;", &[]).await {
-            eprintln!("Unable to create staking_ledger table {e}");
+            eprintln!("Unable to drop staking_ledger table {e}");
         }
 
         let table_create = r#"
-                CREATE TABLE IF NOT EXISTS staking_ledger (
-                    entry_id BIGSERIAL PRIMARY KEY,
-                    epoch BIGINT,
-                    delegate TEXT,
-                    stake BIGINT,
-                    total_staked BIGINT,
-                    delegators_count BIGINT
-                );
-            "#;
+            CREATE TABLE IF NOT EXISTS staking_ledger (
+                entry_id BIGSERIAL PRIMARY KEY,
+                epoch BIGINT,
+                delegate TEXT,
+                stake BIGINT,
+                total_staked BIGINT,
+                delegators_count BIGINT
+            );
+        "#;
         if let Err(e) = client.execute(table_create, &[]).await {
             eprintln!("Unable to create staking_ledger table {e}");
         }
 
-        Self {
-            id: "StakingLedgerEntryPersistenceActor".to_string(),
-            shared_publisher,
-            client,
-            database_inserts: AtomicUsize::new(0),
-        }
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl Actor for StakingLedgerEntryPersistenceActor {
+    type Msg = Event;
+    type State = ();
+    type Arguments = ();
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, _args: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(())
     }
 
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, _state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        if let Event::StakingLedgerEntry(payload) = msg {
+            self.insert(&payload).await?;
+        }
+        Ok(())
+    }
+}
+
+impl StakingLedgerEntryPersistenceActor {
     async fn insert(&self, payload: &StakingLedgerEntryPayload) -> Result<(), &'static str> {
         self.client
             .execute(
@@ -79,40 +87,14 @@ impl StakingLedgerEntryPersistenceActor {
     }
 }
 
-#[async_trait]
-impl Actor for StakingLedgerEntryPersistenceActor {
-    fn id(&self) -> String {
-        self.id.clone()
-    }
-
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.database_inserts
-    }
-
-    async fn handle_event(&self, event: Event) {
-        if event.event_type == EventType::StakingLedgerEntry {
-            let payload: StakingLedgerEntryPayload = sonic_rs::from_str(&event.payload).unwrap();
-            self.insert(&payload).await.unwrap();
-            self.database_inserts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
-    }
-}
-
 #[cfg(test)]
 mod staking_ledger_entry_persistence_actor_tests {
     use super::*;
-    use crate::event_sourcing::events::{Event, EventType};
-    use std::sync::Arc;
+    use crate::event_sourcing::events::Event;
 
     #[tokio::test]
     async fn test_persistence_of_staking_ledger_entry() {
-        let shared_publisher = Arc::new(SharedPublisher::new(100));
-        let actor = StakingLedgerEntryPersistenceActor::new(Arc::clone(&shared_publisher)).await;
+        let actor = StakingLedgerEntryPersistenceActor::default();
 
         let payload = StakingLedgerEntryPayload {
             epoch: 10,
@@ -123,13 +105,8 @@ mod staking_ledger_entry_persistence_actor_tests {
         };
 
         actor
-            .handle_event(Event {
-                event_type: EventType::StakingLedgerEntry,
-                payload: sonic_rs::to_string(&payload).unwrap(),
-            })
-            .await;
-
-        // Assert that the database insert counter has incremented
-        assert_eq!(actor.database_inserts.load(std::sync::atomic::Ordering::SeqCst), 1);
+            .handle(ActorRef::default(), Event::StakingLedgerEntry(payload.clone()), &mut ())
+            .await
+            .unwrap();
     }
 }

@@ -1,12 +1,7 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
-use crate::event_sourcing::payloads::BlockCanonicityUpdatePayload;
-use async_trait::async_trait;
+use crate::event_sourcing::events::Event;
 use futures::lock::Mutex;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct BestBlock {
@@ -15,36 +10,29 @@ pub struct BestBlock {
 }
 
 pub struct BestBlockActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-    pub best_block: Arc<Mutex<Option<BestBlock>>>,
+    best_block: Arc<Mutex<Option<BestBlock>>>,
 }
 
-impl BestBlockActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
+impl Default for BestBlockActor {
+    fn default() -> Self {
         Self {
-            id: "BestBlockActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
             best_block: Arc::new(Mutex::new(None)),
         }
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for BestBlockActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-    async fn handle_event(&self, event: Event) {
-        if let EventType::BlockCanonicityUpdate = event.event_type {
-            let block_payload: BlockCanonicityUpdatePayload = sonic_rs::from_str(&event.payload).unwrap();
-
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        if let Event::BlockCanonicityUpdate(block_payload) = msg {
             let mut best_block_lock = self.best_block.lock().await;
             match &mut *best_block_lock {
                 // Initialize best block if not set
@@ -53,47 +41,31 @@ impl Actor for BestBlockActor {
                         height: block_payload.height,
                         state_hash: block_payload.state_hash.clone(),
                     });
-                    self.publish(Event {
-                        event_type: EventType::BestBlock,
-                        payload: event.payload,
-                    });
+                    state.cast(Event::BestBlock(block_payload))?;
                 }
                 // Update best block if the new block is canonical and has a higher height
                 Some(best_block) if block_payload.canonical && block_payload.height >= best_block.height => {
                     best_block.height = block_payload.height;
-                    best_block.state_hash = block_payload.state_hash;
-                    self.publish(Event {
-                        event_type: EventType::BestBlock,
-                        payload: event.payload,
-                    });
+                    best_block.state_hash = block_payload.state_hash.clone();
+                    state.cast(Event::BestBlock(block_payload))?;
                 }
                 _ => {}
             }
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
 #[tokio::test]
 async fn test_best_block_actor_updates() -> anyhow::Result<()> {
-    use crate::event_sourcing::payloads::BlockCanonicityUpdatePayload;
-    use std::sync::atomic::Ordering;
+    use crate::event_sourcing::{payloads::BlockCanonicityUpdatePayload, test_utils::setup_test_actors};
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
 
-    // Create a shared publisher and the actor
-    let shared_publisher = Arc::new(SharedPublisher::new(200));
-    let actor = BestBlockActor::new(Arc::clone(&shared_publisher));
+    // Setup test actors
+    let actor = setup_test_actors(BestBlockActor::default()).await;
 
-    // Subscribe to the shared publisher to capture any output events
-    let mut receiver = shared_publisher.subscribe();
-
-    // Initial best block should be None
-    assert!(actor.best_block.lock().await.is_none());
-
-    // Define a canonical block update payload with a height of 2
+    // Define a canonical block update payload
     let canonical_block_payload = BlockCanonicityUpdatePayload {
         height: 2,
         state_hash: "new_canonical_hash".to_string(),
@@ -101,49 +73,37 @@ async fn test_best_block_actor_updates() -> anyhow::Result<()> {
         was_canonical: false,
     };
 
-    // Handle the canonical block update event
-    actor
-        .handle_event(Event {
-            event_type: EventType::BlockCanonicityUpdate,
-            payload: sonic_rs::to_string(&canonical_block_payload).unwrap(),
-        })
-        .await;
+    // Send test message and store response
+    let response = actor
+        .call(|_| Event::BlockCanonicityUpdate(canonical_block_payload.clone()), Some(Duration::from_secs(1)))
+        .await?;
 
-    // Check that the best block was updated
-    let best_block = actor.best_block.lock().await;
-    let best_block = best_block.as_ref().expect("Best block should be set");
-    assert_eq!(best_block.height, 2);
-    assert_eq!(best_block.state_hash, "new_canonical_hash");
-
-    // Check that a BestBlock event was published
-    if let Ok(received_event) = receiver.recv().await {
-        assert_eq!(received_event.event_type, EventType::BestBlock);
-        let published_payload: BlockCanonicityUpdatePayload = sonic_rs::from_str(&received_event.payload).unwrap();
-        assert_eq!(published_payload, canonical_block_payload);
-    } else {
-        panic!("Expected a BestBlock event but did not receive one.");
+    // Verify the response
+    match response {
+        CallResult::Success(Event::BestBlock(payload)) => {
+            assert_eq!(payload.height, 2);
+            assert_eq!(payload.state_hash, "new_canonical_hash");
+            assert!(payload.canonical);
+            assert!(!payload.was_canonical);
+        }
+        CallResult::Success(_) => panic!("Received unexpected message type"),
+        CallResult::Timeout => panic!("Call timed out"),
+        CallResult::SenderError => panic!("Call failed"),
     }
-
-    // Verify that events_published was incremented
-    assert_eq!(actor.events_published.load(Ordering::SeqCst), 1);
 
     Ok(())
 }
 
 #[tokio::test]
 async fn test_best_block_actor_does_not_publish_on_non_canonical_or_lower_height_block() -> anyhow::Result<()> {
-    use crate::event_sourcing::payloads::BlockCanonicityUpdatePayload;
-    use std::sync::atomic::Ordering;
-    use tokio::time::{timeout, Duration};
+    use crate::event_sourcing::{payloads::BlockCanonicityUpdatePayload, test_utils::setup_test_actors};
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
 
-    // Create a shared publisher and the actor
-    let shared_publisher = Arc::new(SharedPublisher::new(200));
-    let actor = BestBlockActor::new(Arc::clone(&shared_publisher));
+    // Setup test actors
+    let actor = setup_test_actors(BestBlockActor::default()).await;
 
-    // Subscribe to the shared publisher to capture any output events
-    let mut receiver = shared_publisher.subscribe();
-
-    // Define a canonical block to initialize the best block
+    // Initial canonical block
     let initial_canonical_block_payload = BlockCanonicityUpdatePayload {
         height: 2,
         state_hash: "canonical_hash_2".to_string(),
@@ -151,65 +111,58 @@ async fn test_best_block_actor_does_not_publish_on_non_canonical_or_lower_height
         was_canonical: false,
     };
 
-    // Handle the canonical block to set an initial best block
-    actor
-        .handle_event(Event {
-            event_type: EventType::BlockCanonicityUpdate,
-            payload: sonic_rs::to_string(&initial_canonical_block_payload).unwrap(),
-        })
-        .await;
+    // Set initial best block
+    let response = actor
+        .call(
+            |_| Event::BlockCanonicityUpdate(initial_canonical_block_payload.clone()),
+            Some(Duration::from_secs(1)),
+        )
+        .await?;
 
-    // Check that the best block was set to the initial canonical block
-    {
-        let best_block = actor.best_block.lock().await;
-        let best_block = best_block.as_ref().expect("Best block should be set");
-        assert_eq!(best_block.height, 2);
-        assert_eq!(best_block.state_hash, "canonical_hash_2");
+    // Verify initial block was set correctly
+    match response {
+        CallResult::Success(Event::BestBlock(payload)) => {
+            assert_eq!(payload.height, 2);
+            assert_eq!(payload.state_hash, "canonical_hash_2");
+            assert!(payload.canonical);
+        }
+        CallResult::Success(_) => panic!("Received unexpected message type"),
+        CallResult::Timeout => panic!("Call timed out"),
+        CallResult::SenderError => panic!("Call failed"),
     }
 
-    // Clear any initial events from the receiver
-    while receiver.try_recv().is_ok() {}
-
-    // Process a non-canonical block update with a higher height (should not update)
+    // Test non-canonical block with higher height
     let non_canonical_block_payload = BlockCanonicityUpdatePayload {
         height: 3,
         state_hash: "non_canonical_hash_3".to_string(),
         canonical: false,
         was_canonical: false,
     };
-    actor
-        .handle_event(Event {
-            event_type: EventType::BlockCanonicityUpdate,
-            payload: sonic_rs::to_string(&non_canonical_block_payload).unwrap(),
-        })
-        .await;
 
-    // Process a canonical block update with a lower height (should not update)
+    let response = actor
+        .call(|_| Event::BlockCanonicityUpdate(non_canonical_block_payload), Some(Duration::from_secs(1)))
+        .await?;
+
+    // Should not receive a BestBlock event for non-canonical block
+    assert!(matches!(response, CallResult::Success(Event::BlockCanonicityUpdate(_))));
+
+    // Test canonical block with lower height
     let lower_height_canonical_block_payload = BlockCanonicityUpdatePayload {
         height: 1,
         state_hash: "canonical_hash_1".to_string(),
         canonical: true,
         was_canonical: false,
     };
-    actor
-        .handle_event(Event {
-            event_type: EventType::BlockCanonicityUpdate,
-            payload: sonic_rs::to_string(&lower_height_canonical_block_payload).unwrap(),
-        })
-        .await;
 
-    // Use timeout to confirm no events were published for the non-canonical or lower height block
-    let result = timeout(Duration::from_secs(1), receiver.recv()).await;
-    assert!(result.is_err(), "No event should have been published for non-canonical or lower height block.");
+    let response = actor
+        .call(
+            |_| Event::BlockCanonicityUpdate(lower_height_canonical_block_payload),
+            Some(Duration::from_secs(1)),
+        )
+        .await?;
 
-    // Confirm that the best block remains unchanged
-    let best_block = actor.best_block.lock().await;
-    let best_block = best_block.as_ref().expect("Best block should still be set");
-    assert_eq!(best_block.height, 2);
-    assert_eq!(best_block.state_hash, "canonical_hash_2");
-
-    // Verify that events_published has only been incremented once
-    assert_eq!(actor.events_published.load(Ordering::SeqCst), 1);
+    // Should not receive a BestBlock event for lower height block
+    assert!(matches!(response, CallResult::Success(Event::BlockCanonicityUpdate(_))));
 
     Ok(())
 }

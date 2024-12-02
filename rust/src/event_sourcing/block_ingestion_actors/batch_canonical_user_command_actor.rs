@@ -1,8 +1,4 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
+use super::super::{events::Event, shared_publisher::SharedPublisher, Actor};
 use crate::{
     constants::TRANSITION_FRONTIER_DISTANCE,
     event_sourcing::{canonical_items_manager::CanonicalItemsManager, payloads::*},
@@ -110,7 +106,7 @@ impl Actor for BatchCanonicalUserCommandLogActor {
 mod batch_canonical_user_command_tests {
     use super::*;
     use crate::event_sourcing::{
-        events::{Event, EventType},
+        events::Event,
         mainnet_block_models::{CommandStatus, CommandSummary, CommandType},
         payloads::{BatchCanonicalUserCommandLogPayload, BlockCanonicityUpdatePayload, MainnetBlockPayload},
     };
@@ -169,15 +165,9 @@ mod batch_canonical_user_command_tests {
         let mainnet_event_payload = sonic_rs::to_string(&mainnet_payload).unwrap();
         let canonicity_event_payload = sonic_rs::to_string(&canonicity_payload).unwrap();
 
-        let mainnet_event = Event {
-            event_type: EventType::MainnetBlock,
-            payload: mainnet_event_payload,
-        };
+        let mainnet_event = Event::MainnetBlock(mainnet_event_payload);
 
-        let canonicity_event = Event {
-            event_type: EventType::BlockCanonicityUpdate,
-            payload: canonicity_event_payload,
-        };
+        let canonicity_event = Event::BlockCanonicityUpdate(canonicity_event_payload);
 
         // Subscribe to the shared publisher
         let mut receiver = shared_publisher.subscribe();
@@ -188,7 +178,7 @@ mod batch_canonical_user_command_tests {
 
         // Capture the published event
         if let Ok(published_event) = receiver.recv().await {
-            assert_eq!(published_event.event_type, EventType::BatchCanonicalUserCommandLog);
+            assert_eq!(published_event, Event::BatchCanonicalUserCommandLog);
 
             // Verify the published payload
             let published_payload: BatchCanonicalUserCommandLogPayload = sonic_rs::from_str(&published_event.payload).expect("Failed to deserialize payload");

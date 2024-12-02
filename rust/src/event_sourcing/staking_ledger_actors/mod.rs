@@ -1,5 +1,3 @@
-use super::shared_publisher::SharedPublisher;
-use crate::event_sourcing::{block_ingestion_actors::Actor, setup_actor};
 use futures::future::try_join_all;
 use staking_ledger_entry_actor::StakingLedgerEntryActor;
 use staking_ledger_entry_persistence_actor::StakingLedgerEntryPersistenceActor;

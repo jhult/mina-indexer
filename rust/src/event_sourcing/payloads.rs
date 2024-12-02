@@ -4,7 +4,7 @@ use super::{
 };
 use sonic_rs::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NewAccountPayload {
     pub height: u64,
     pub state_hash: String,
@@ -27,7 +27,7 @@ pub struct ActorHeightPayload {
     pub actor: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Eq, Clone)]
 pub struct BlockAncestorPayload {
     pub height: u64,
     pub state_hash: String,
@@ -35,7 +35,7 @@ pub struct BlockAncestorPayload {
     pub last_vrf_output: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct BerkeleyBlockPayload {
     pub height: u64,
     pub state_hash: String,
@@ -54,7 +54,7 @@ pub struct EpochStakeDelegationPayload {
     pub canonical: bool,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq, Eq)]
 pub struct MainnetBlockPayload {
     pub height: u64,
     pub state_hash: String,
@@ -121,7 +121,7 @@ impl MainnetBlockPayload {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct NewBlockPayload {
     pub height: u64,
     pub state_hash: String,
@@ -129,7 +129,7 @@ pub struct NewBlockPayload {
     pub last_vrf_output: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct BlockCanonicityUpdatePayload {
     pub height: u64,
     pub state_hash: String,
@@ -137,7 +137,7 @@ pub struct BlockCanonicityUpdatePayload {
     pub was_canonical: bool,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct GenesisBlockPayload {
     pub height: u64,
     pub state_hash: String,
@@ -146,7 +146,7 @@ pub struct GenesisBlockPayload {
     pub unix_timestamp: u64,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Eq)]
 pub struct BlockConfirmationPayload {
     pub height: u64,
     pub state_hash: String,
@@ -171,7 +171,7 @@ impl GenesisBlockPayload {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct SnarkWorkSummaryPayload {
     pub height: u64,
     pub state_hash: String,
@@ -180,7 +180,7 @@ pub struct SnarkWorkSummaryPayload {
     pub fee_nanomina: u64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct SnarkCanonicitySummaryPayload {
     pub height: u64,
     pub state_hash: String,
@@ -256,7 +256,7 @@ pub struct BlockLogPayload {
     pub is_berkeley_block: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct CanonicalBlockLogPayload {
     pub height: u64,
     pub state_hash: String,
@@ -290,7 +290,7 @@ impl CanonicalItem for CanonicalBlockLogPayload {
     }
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq, Eq)]
 pub struct UserCommandLogPayload {
     pub height: u64,
     pub state_hash: String,
@@ -327,7 +327,7 @@ impl fmt::Display for InternalCommandType {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct InternalCommandLogPayload {
     pub internal_command_type: InternalCommandType,
     pub height: u64,
@@ -338,7 +338,7 @@ pub struct InternalCommandLogPayload {
     pub source: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct CanonicalInternalCommandLogPayload {
     pub internal_command_type: InternalCommandType,
     pub height: u64,
@@ -369,7 +369,7 @@ impl CanonicalItem for CanonicalInternalCommandLogPayload {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq, Eq)]
 pub struct CanonicalUserCommandLogPayload {
     pub height: u64,
     pub state_hash: String,
@@ -451,7 +451,7 @@ impl fmt::Display for LedgerDestination {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DoubleEntryRecordPayload {
     pub height: u64,
     pub state_hash: String,
@@ -509,7 +509,7 @@ impl fmt::Display for AccountingEntryAccountType {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AccountingEntry {
     pub transfer_type: String,
     pub counterparty: String,

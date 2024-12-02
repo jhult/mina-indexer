@@ -1,109 +1,83 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
+use super::super::events::Event;
 use crate::utility::get_top_level_keys_from_json_file;
-use async_trait::async_trait;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 
-pub struct PCBBlockPathActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-}
+#[derive(Default)]
+pub struct PCBBlockPathActor;
 
-impl PCBBlockPathActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
-        Self {
-            id: "PCBBlockPathActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
-        }
-    }
-}
-
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for PCBBlockPathActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-    async fn handle_event(&self, event: Event) {
-        if let EventType::PrecomputedBlockPath = event.event_type {
-            let keys = get_top_level_keys_from_json_file(&event.payload).expect("file to exist");
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        if let Event::PrecomputedBlockPath(path) = msg {
+            let keys = get_top_level_keys_from_json_file(&path).expect("file to exist");
             if keys == vec!["data".to_string(), "version".to_string()] {
-                self.publish(Event {
-                    event_type: EventType::BerkeleyBlockPath,
-                    payload: event.payload.clone(),
-                });
+                state.cast(Event::BerkeleyBlockPath(path))?;
             } else {
-                self.publish(Event {
-                    event_type: EventType::MainnetBlockPath,
-                    payload: event.payload,
-                });
+                state.cast(Event::MainnetBlockPath(path))?;
             }
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
-#[tokio::test]
-async fn test_precomputed_block_path_identity_actor() {
-    use std::sync::atomic::Ordering;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::event_sourcing::test_utils::setup_test_actors;
+    use ractor::rpc::CallResult;
+    use std::fs;
     use tempfile::NamedTempFile;
-    // Initialize shared publisher
-    let shared_publisher = Arc::new(SharedPublisher::new(200));
+    use tokio::time::Duration;
 
-    // Create an instance of the actor
-    let actor = PCBBlockPathActor {
-        id: "PCBBlockPathActor".to_string(),
-        shared_publisher: Arc::clone(&shared_publisher),
-        events_published: AtomicUsize::new(0),
-    };
+    #[tokio::test]
+    async fn test_precomputed_block_path_identity_actor() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(PCBBlockPathActor {}).await;
 
-    // Subscribe to the shared publisher to listen for actor responses
-    let mut receiver = shared_publisher.subscribe();
+        // Scenario 1: File with "data" and "version" keys (should trigger BerkeleyBlockPath)
+        let temp_file_berkeley = NamedTempFile::new()?;
+        fs::write(temp_file_berkeley.path(), r#"{"data": {}, "version": "1.0"}"#)?;
+        let berkeley_path = temp_file_berkeley.path().to_str().unwrap().to_string();
 
-    // Scenario 1: File with "data" and "version" keys (should trigger BerkeleyBlockPath)
-    let temp_file_berkeley = NamedTempFile::new().unwrap();
-    std::fs::write(temp_file_berkeley.path(), r#"{"data": {}, "version": "1.0"}"#).unwrap();
-    let berkeley_event = Event {
-        event_type: EventType::PrecomputedBlockPath,
-        payload: temp_file_berkeley.path().to_str().unwrap().to_string(),
-    };
-    actor.on_event(berkeley_event).await;
+        let response = actor
+            .call(|_| Event::PrecomputedBlockPath(berkeley_path.clone()), Some(Duration::from_secs(1)))
+            .await?;
 
-    // Check that the actor publishes a BerkeleyBlockPath event
-    if let Ok(received_event) = receiver.recv().await {
-        assert_eq!(received_event.event_type, EventType::BerkeleyBlockPath);
-        assert_eq!(received_event.payload, temp_file_berkeley.path().to_str().unwrap().to_string());
-        assert_eq!(actor.actor_outputs().load(Ordering::SeqCst), 1);
-    } else {
-        panic!("Did not receive expected BerkeleyBlockPath event from actor.");
-    }
+        match response {
+            CallResult::Success(Event::BerkeleyBlockPath(path)) => {
+                assert_eq!(path, berkeley_path);
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
-    // Scenario 2: File with different keys (should trigger MainnetBlockPath)
-    let temp_file_mainnet = NamedTempFile::new().unwrap();
-    std::fs::write(temp_file_mainnet.path(), r#"{"other_key": {}, "another_key": "1.0"}"#).unwrap();
-    let mainnet_event = Event {
-        event_type: EventType::PrecomputedBlockPath,
-        payload: temp_file_mainnet.path().to_str().unwrap().to_string(),
-    };
-    actor.on_event(mainnet_event).await;
+        // Scenario 2: File with different keys (should trigger MainnetBlockPath)
+        let temp_file_mainnet = NamedTempFile::new()?;
+        fs::write(temp_file_mainnet.path(), r#"{"other_key": {}, "another_key": "1.0"}"#)?;
+        let mainnet_path = temp_file_mainnet.path().to_str().unwrap().to_string();
 
-    // Check that the actor publishes a MainnetBlockPath event
-    if let Ok(received_event) = receiver.recv().await {
-        assert_eq!(received_event.event_type, EventType::MainnetBlockPath);
-        assert_eq!(received_event.payload, temp_file_mainnet.path().to_str().unwrap().to_string());
-    } else {
-        panic!("Did not receive expected MainnetBlockPath event from actor.");
+        let response = actor
+            .call(|_| Event::PrecomputedBlockPath(mainnet_path.clone()), Some(Duration::from_secs(1)))
+            .await?;
+
+        match response {
+            CallResult::Success(Event::MainnetBlockPath(path)) => {
+                assert_eq!(path, mainnet_path);
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
+
+        Ok(())
     }
 }

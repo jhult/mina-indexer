@@ -1,64 +1,44 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
 use crate::{
     constants::TRANSITION_FRONTIER_DISTANCE,
-    event_sourcing::{canonical_items_manager::CanonicalItemsManager, payloads::*},
+    event_sourcing::{canonical_items_manager::CanonicalItemsManager, error_unhandled_event, events::Event, payloads::*},
 };
-use async_trait::async_trait;
 use futures::lock::Mutex;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use std::sync::Arc;
 
 pub struct CanonicalUserCommandLogActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-    pub canonical_items_manager: Arc<Mutex<CanonicalItemsManager<CanonicalUserCommandLogPayload>>>,
+    canonical_items_manager: Arc<Mutex<CanonicalItemsManager<CanonicalUserCommandLogPayload>>>,
 }
 
-impl CanonicalUserCommandLogActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
+impl Default for CanonicalUserCommandLogActor {
+    fn default() -> Self {
         Self {
-            id: "CanonicalUserCommandLogActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
             canonical_items_manager: Arc::new(Mutex::new(CanonicalItemsManager::new((TRANSITION_FRONTIER_DISTANCE / 5usize) as u64))),
         }
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for CanonicalUserCommandLogActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = Self;
+    type Arguments = ();
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-
-    async fn report(&self) {
-        let manager = self.canonical_items_manager.lock().await;
-        manager.report(&self.id()).await;
-    }
-
-    async fn handle_event(&self, event: Event) {
-        match event.event_type {
-            EventType::BlockCanonicityUpdate => {
-                let payload: BlockCanonicityUpdatePayload = sonic_rs::from_str(&event.payload).unwrap();
+    async fn handle(&self, ctx: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::BlockCanonicityUpdate(payload) => {
                 {
                     let manager = self.canonical_items_manager.lock().await;
                     manager.add_block_canonicity_update(payload.clone()).await;
                 }
                 {
                     let manager = self.canonical_items_manager.lock().await;
-                    for payload in manager.get_updates(payload.height).await.iter() {
-                        self.publish(Event {
-                            event_type: EventType::CanonicalUserCommandLog,
-                            payload: sonic_rs::to_string(&payload).unwrap(),
-                        });
+                    for update_payload in manager.get_updates(payload.height).await.iter() {
+                        state.cast(Event::CanonicalUserCommandLog(update_payload.clone()))?;
                     }
 
                     if let Err(e) = manager.prune().await {
@@ -66,15 +46,13 @@ impl Actor for CanonicalUserCommandLogActor {
                     }
                 }
             }
-            EventType::MainnetBlock => {
-                let event_payload: MainnetBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
+            Event::MainnetBlock(event_payload) => {
                 let manager = self.canonical_items_manager.lock().await;
                 manager
                     .add_items_count(event_payload.height, &event_payload.state_hash, event_payload.user_command_count as u64)
                     .await;
             }
-            EventType::UserCommandLog => {
-                let event_payload: UserCommandLogPayload = sonic_rs::from_str(&event.payload).unwrap();
+            Event::UserCommandLog(event_payload) => {
                 {
                     let manager = self.canonical_items_manager.lock().await;
                     manager
@@ -99,11 +77,8 @@ impl Actor for CanonicalUserCommandLogActor {
                 }
                 {
                     let manager = self.canonical_items_manager.lock().await;
-                    for payload in manager.get_updates(event_payload.height).await.iter() {
-                        self.publish(Event {
-                            event_type: EventType::CanonicalUserCommandLog,
-                            payload: sonic_rs::to_string(&payload).unwrap(),
-                        });
+                    for update_payload in manager.get_updates(event_payload.height).await.iter() {
+                        state.cast(Event::CanonicalUserCommandLog(update_payload.clone()))?;
                     }
 
                     if let Err(e) = manager.prune().await {
@@ -111,33 +86,27 @@ impl Actor for CanonicalUserCommandLogActor {
                     }
                 }
             }
-
-            _ => return,
+            _ => error_unhandled_event(&msg),
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
-
 #[cfg(test)]
 mod canonical_user_command_log_actor_tests {
     use super::*;
     use crate::event_sourcing::{
-        events::{Event, EventType},
+        events::Event,
         mainnet_block_models::{CommandStatus, CommandType},
-        payloads::{CanonicalUserCommandLogPayload, MainnetBlockPayload, UserCommandLogPayload},
+        payloads::{BlockCanonicityUpdatePayload, MainnetBlockPayload, UserCommandLogPayload},
+        test_utils::setup_test_actors,
     };
-    use std::sync::Arc;
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
 
     #[tokio::test]
-    async fn test_publishes_after_all_conditions_met() {
-        let shared_publisher = Arc::new(SharedPublisher::new(100));
-        let actor = CanonicalUserCommandLogActor::new(Arc::clone(&shared_publisher));
-
-        let mut receiver = shared_publisher.subscribe();
+    async fn test_publishes_after_all_conditions_met() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(CanonicalUserCommandLogActor::default()).await;
 
         // Add a mainnet block with user command count
         let mainnet_block = MainnetBlockPayload {
@@ -146,12 +115,7 @@ mod canonical_user_command_log_actor_tests {
             state_hash: "state_hash_10".to_string(),
             ..Default::default()
         };
-        actor
-            .handle_event(Event {
-                event_type: EventType::MainnetBlock,
-                payload: sonic_rs::to_string(&mainnet_block).unwrap(),
-            })
-            .await;
+        actor.call(|_| Event::MainnetBlock(mainnet_block.clone()), Some(Duration::from_secs(1))).await?;
 
         // Add two user command logs
         let user_command_1 = UserCommandLogPayload {
@@ -185,17 +149,11 @@ mod canonical_user_command_log_actor_tests {
             amount_nanomina: 7000,
         };
         actor
-            .handle_event(Event {
-                event_type: EventType::UserCommandLog,
-                payload: sonic_rs::to_string(&user_command_1).unwrap(),
-            })
-            .await;
+            .call(|_| Event::UserCommandLog(user_command_1.clone()), Some(Duration::from_secs(1)))
+            .await?;
         actor
-            .handle_event(Event {
-                event_type: EventType::UserCommandLog,
-                payload: sonic_rs::to_string(&user_command_2).unwrap(),
-            })
-            .await;
+            .call(|_| Event::UserCommandLog(user_command_2.clone()), Some(Duration::from_secs(1)))
+            .await?;
 
         // Add a block canonicity update for the same height
         let update = BlockCanonicityUpdatePayload {
@@ -204,45 +162,38 @@ mod canonical_user_command_log_actor_tests {
             canonical: true,
             was_canonical: false,
         };
-        actor
-            .handle_event(Event {
-                event_type: EventType::BlockCanonicityUpdate,
-                payload: sonic_rs::to_string(&update).unwrap(),
-            })
-            .await;
+        let response = actor
+            .call(|_| Event::BlockCanonicityUpdate(update.clone()), Some(Duration::from_secs(1)))
+            .await?;
 
-        // Expect the event to be published
-        let event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
-            .await
-            .expect("Expected a published event")
-            .expect("Event received");
+        // Verify the response
+        match response {
+            CallResult::Success(Event::CanonicalUserCommandLog(payload)) => {
+                assert_eq!(payload.height, 10);
+                assert_eq!(payload.state_hash, "state_hash_10");
+                assert!(payload.canonical);
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
-        let payload: CanonicalUserCommandLogPayload = sonic_rs::from_str(&event.payload).unwrap();
-        assert_eq!(payload.height, 10);
-        assert_eq!(payload.state_hash, "state_hash_10");
-        assert!(payload.canonical);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_does_not_publish_without_all_conditions_met() {
-        let shared_publisher = Arc::new(SharedPublisher::new(100));
-        let actor = CanonicalUserCommandLogActor::new(Arc::clone(&shared_publisher));
-
-        let mut receiver = shared_publisher.subscribe();
+    async fn test_does_not_publish_without_all_conditions_met() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(CanonicalUserCommandLogActor::default()).await;
 
         // Add a mainnet block with user command count
         let mainnet_block = MainnetBlockPayload {
             height: 10,
             user_command_count: 2,
-            state_hash: "state_hash_other".to_string(), //no matching state hash
+            state_hash: "state_hash_other".to_string(), // no matching state hash
             ..Default::default()
         };
-        actor
-            .handle_event(Event {
-                event_type: EventType::MainnetBlock,
-                payload: sonic_rs::to_string(&mainnet_block).unwrap(),
-            })
-            .await;
+        actor.call(|_| Event::MainnetBlock(mainnet_block.clone()), Some(Duration::from_secs(1))).await?;
 
         // Add one user command log (not enough)
         let user_command = UserCommandLogPayload {
@@ -261,11 +212,8 @@ mod canonical_user_command_log_actor_tests {
             amount_nanomina: 5000,
         };
         actor
-            .handle_event(Event {
-                event_type: EventType::UserCommandLog,
-                payload: sonic_rs::to_string(&user_command).unwrap(),
-            })
-            .await;
+            .call(|_| Event::UserCommandLog(user_command.clone()), Some(Duration::from_secs(1)))
+            .await?;
 
         // Add a block canonicity update for the same height
         let update = BlockCanonicityUpdatePayload {
@@ -274,15 +222,19 @@ mod canonical_user_command_log_actor_tests {
             canonical: true,
             was_canonical: false,
         };
-        actor
-            .handle_event(Event {
-                event_type: EventType::BlockCanonicityUpdate,
-                payload: sonic_rs::to_string(&update).unwrap(),
-            })
-            .await;
+        let response = actor
+            .call(|_| Event::BlockCanonicityUpdate(update.clone()), Some(Duration::from_secs(1)))
+            .await?;
 
-        // Expect no event to be published
-        let no_event = tokio::time::timeout(std::time::Duration::from_millis(100), receiver.recv()).await;
-        assert!(no_event.is_err(), "No event should be published since not all conditions are met");
+        // Verify the response
+        match response {
+            CallResult::Success(_) => panic!("Unexpected message type received"),
+            CallResult::Timeout => {
+                // Expected outcome: no event should be published
+            }
+            CallResult::SenderError => panic!("Call failed"),
+        }
+
+        Ok(())
     }
 }

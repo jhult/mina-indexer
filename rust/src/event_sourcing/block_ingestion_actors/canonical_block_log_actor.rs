@@ -1,68 +1,51 @@
-use super::{super::shared_publisher::SharedPublisher, Actor};
 use crate::{
     constants::TRANSITION_FRONTIER_DISTANCE,
-    event_sourcing::{canonical_items_manager::CanonicalItemsManager, events::*, payloads::*},
+    event_sourcing::{canonical_items_manager::CanonicalItemsManager, events::Event, payloads::CanonicalBlockLogPayload},
 };
-use async_trait::async_trait;
 use futures::lock::Mutex;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use std::sync::Arc;
 
 pub struct CanonicalBlockLogActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-    pub canonical_items_manager: Arc<Mutex<CanonicalItemsManager<CanonicalBlockLogPayload>>>,
+    canonical_items_manager: Arc<Mutex<CanonicalItemsManager<CanonicalBlockLogPayload>>>,
 }
 
-impl CanonicalBlockLogActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
+impl Default for CanonicalBlockLogActor {
+    fn default() -> Self {
         Self {
-            id: "CanonicalBlockLogActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
             canonical_items_manager: Arc::new(Mutex::new(CanonicalItemsManager::new((TRANSITION_FRONTIER_DISTANCE / 5usize) as u64))),
         }
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for CanonicalBlockLogActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-
-    async fn report(&self) {
-        let manager = self.canonical_items_manager.lock().await;
-        manager.report(&self.id()).await;
-    }
-
-    async fn handle_event(&self, event: Event) {
-        match event.event_type {
-            EventType::BlockCanonicityUpdate => {
-                let payload: BlockCanonicityUpdatePayload = sonic_rs::from_str(&event.payload).unwrap();
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::BlockCanonicityUpdate(payload) => {
                 {
                     let manager = self.canonical_items_manager.lock().await;
                     manager.add_block_canonicity_update(payload.clone()).await;
                 }
                 {
                     let manager = self.canonical_items_manager.lock().await;
-                    for payload in manager.get_updates(payload.height).await.iter() {
-                        self.publish(Event {
-                            event_type: EventType::CanonicalBlockLog,
-                            payload: sonic_rs::to_string(&payload).unwrap(),
-                        });
+                    for update_payload in manager.get_updates(payload.height).await.iter() {
+                        state.cast(Event::CanonicalBlockLog(update_payload.clone()))?;
                     }
                     if let Err(e) = manager.prune().await {
                         eprintln!("{}", e);
                     }
                 }
             }
-            EventType::BlockLog => {
-                let event_payload: BlockLogPayload = sonic_rs::from_str(&event.payload).unwrap();
+            Event::BlockLog(event_payload) => {
                 {
                     let manager = self.canonical_items_manager.lock().await;
                     manager
@@ -85,13 +68,9 @@ impl Actor for CanonicalBlockLogActor {
                 }
                 {
                     let manager = self.canonical_items_manager.lock().await;
-                    for payload in manager.get_updates(event_payload.height).await.iter() {
-                        self.publish(Event {
-                            event_type: EventType::CanonicalBlockLog,
-                            payload: sonic_rs::to_string(&payload).unwrap(),
-                        });
+                    for update_payload in manager.get_updates(event_payload.height).await.iter() {
+                        state.cast(Event::CanonicalBlockLog(update_payload.clone()))?;
                     }
-
                     if let Err(e) = manager.prune().await {
                         eprintln!("{}", e);
                     }
@@ -99,31 +78,24 @@ impl Actor for CanonicalBlockLogActor {
             }
             _ => {}
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
 #[cfg(test)]
-mod canonical_block_log_actor_tests {
+mod tests {
     use super::*;
-    use crate::event_sourcing::events::{Event, EventType};
-    use std::sync::Arc;
-    use tokio::time::timeout;
-
-    async fn setup_actor() -> (Arc<CanonicalBlockLogActor>, tokio::sync::broadcast::Receiver<Event>) {
-        let shared_publisher = Arc::new(SharedPublisher::new(100));
-        let actor = Arc::new(CanonicalBlockLogActor::new(Arc::clone(&shared_publisher)));
-        let receiver = shared_publisher.subscribe();
-        (actor, receiver)
-    }
+    use crate::event_sourcing::{
+        payloads::{BlockCanonicityUpdatePayload, BlockLogPayload},
+        test_utils::setup_test_actors,
+    };
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
 
     #[tokio::test]
-    async fn test_canonical_block_log() {
-        let (actor, mut receiver) = setup_actor().await;
+    async fn test_canonical_block_log() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(CanonicalBlockLogActor::default()).await;
 
         // Add a BlockLog event
         let block_log_payload = BlockLogPayload {
@@ -140,12 +112,14 @@ mod canonical_block_log_actor_tests {
             is_berkeley_block: true,
         };
 
-        let block_log_event = Event {
-            event_type: EventType::BlockLog,
-            payload: sonic_rs::to_string(&block_log_payload).unwrap(),
-        };
+        let response = actor.call(|_| Event::BlockLog(block_log_payload), Some(Duration::from_secs(1))).await?;
 
-        actor.handle_event(block_log_event).await;
+        match response {
+            CallResult::Success(Event::BlockLog(_)) => {}
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
         // Send a BlockCanonicityUpdate event
         let block_canonicity_update_payload = BlockCanonicityUpdatePayload {
@@ -155,29 +129,28 @@ mod canonical_block_log_actor_tests {
             was_canonical: false,
         };
 
-        let block_canonicity_update_event = Event {
-            event_type: EventType::BlockCanonicityUpdate,
-            payload: sonic_rs::to_string(&block_canonicity_update_payload).unwrap(),
-        };
+        let response = actor
+            .call(|_| Event::BlockCanonicityUpdate(block_canonicity_update_payload), Some(Duration::from_secs(1)))
+            .await?;
 
-        actor.handle_event(block_canonicity_update_event).await;
+        match response {
+            CallResult::Success(Event::CanonicalBlockLog(payload)) => {
+                assert_eq!(payload.height, 1);
+                assert_eq!(payload.state_hash, "hash_1");
+                assert!(payload.canonical);
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
-        // Confirm CanonicalBlockLog event was published
-        let received_event = timeout(std::time::Duration::from_secs(1), receiver.recv()).await;
-        assert!(received_event.is_ok(), "Expected a CanonicalBlockLog event");
-
-        let event = received_event.unwrap().unwrap();
-        assert_eq!(event.event_type, EventType::CanonicalBlockLog);
-
-        let canonical_payload: CanonicalBlockLogPayload = sonic_rs::from_str(&event.payload).unwrap();
-        assert_eq!(canonical_payload.height, 1);
-        assert_eq!(canonical_payload.state_hash, "hash_1");
-        assert!(canonical_payload.canonical);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_canonical_block_log_different_event_order() {
-        let (actor, mut receiver) = setup_actor().await;
+    async fn test_canonical_block_log_different_event_order() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(CanonicalBlockLogActor::new()).await;
 
         // Add a BlockLog event
         let block_log_payload = BlockLogPayload {
@@ -194,12 +167,7 @@ mod canonical_block_log_actor_tests {
             is_berkeley_block: true,
         };
 
-        let block_log_event = Event {
-            event_type: EventType::BlockLog,
-            payload: sonic_rs::to_string(&block_log_payload).unwrap(),
-        };
-
-        // Send a BlockCanonicityUpdate event
+        // Send a BlockCanonicityUpdate event first
         let block_canonicity_update_payload = BlockCanonicityUpdatePayload {
             height: 1,
             state_hash: "hash_1".to_string(),
@@ -207,25 +175,30 @@ mod canonical_block_log_actor_tests {
             was_canonical: false,
         };
 
-        let block_canonicity_update_event = Event {
-            event_type: EventType::BlockCanonicityUpdate,
-            payload: sonic_rs::to_string(&block_canonicity_update_payload).unwrap(),
-        };
+        let response = actor
+            .call(|_| Event::BlockCanonicityUpdate(block_canonicity_update_payload), Some(Duration::from_secs(1)))
+            .await?;
 
-        actor.handle_event(block_canonicity_update_event).await;
+        match response {
+            CallResult::Success(Event::BlockCanonicityUpdate(_)) => {}
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
-        actor.handle_event(block_log_event).await;
+        let response = actor.call(|_| Event::BlockLog(block_log_payload), Some(Duration::from_secs(1))).await?;
 
-        // Confirm CanonicalBlockLog event was published
-        let received_event = timeout(std::time::Duration::from_secs(1), receiver.recv()).await;
-        assert!(received_event.is_ok(), "Expected a CanonicalBlockLog event");
+        match response {
+            CallResult::Success(Event::CanonicalBlockLog(payload)) => {
+                assert_eq!(payload.height, 1);
+                assert_eq!(payload.state_hash, "hash_1");
+                assert!(payload.canonical);
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
-        let event = received_event.unwrap().unwrap();
-        assert_eq!(event.event_type, EventType::CanonicalBlockLog);
-
-        let canonical_payload: CanonicalBlockLogPayload = sonic_rs::from_str(&event.payload).unwrap();
-        assert_eq!(canonical_payload.height, 1);
-        assert_eq!(canonical_payload.state_hash, "hash_1");
-        assert!(canonical_payload.canonical);
+        Ok(())
     }
 }

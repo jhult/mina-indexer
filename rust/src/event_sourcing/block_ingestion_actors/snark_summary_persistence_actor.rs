@@ -1,8 +1,4 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
+use super::super::{events::Event, Actor};
 use crate::{
     constants::POSTGRES_CONNECTION_STRING,
     event_sourcing::{db_logger::DbLogger, payloads::*},
@@ -176,10 +172,7 @@ mod snark_summary_persistence_actor_tests {
             ],
         };
 
-        let event = Event {
-            event_type: EventType::BulkSnarkCanonicity,
-            payload: sonic_rs::to_string(&bulk_snark_summary).unwrap(),
-        };
+        let event = Event::BulkSnarkCanonicity(&bulk_snark_summary);
 
         // Handle the event
         actors[0].handle_event(event).await;
@@ -242,17 +235,11 @@ mod snark_summary_persistence_actor_tests {
         };
 
         // Send the first batch event
-        let event1 = Event {
-            event_type: EventType::BulkSnarkCanonicity,
-            payload: sonic_rs::to_string(&batch_summary1).unwrap(),
-        };
+        let event1 = Event::BulkSnarkCanonicity(&batch_summary1);
         actors[0].handle_event(event1).await;
 
         // Send the second batch event
-        let event2 = Event {
-            event_type: EventType::BulkSnarkCanonicity,
-            payload: sonic_rs::to_string(&batch_summary2).unwrap(),
-        };
+        let event2 = Event::BulkSnarkCanonicity(&batch_summary2);
         actors[1].handle_event(event2).await;
 
         // Verify ActorHeight events for the first batch

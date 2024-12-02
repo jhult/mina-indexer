@@ -250,10 +250,7 @@ mod canonical_user_command_log_persistence_tests {
         };
 
         // Serialize the batch payload into an event
-        let event = Event {
-            event_type: EventType::BatchCanonicalUserCommandLog,
-            payload: sonic_rs::to_string(&batch_payload).unwrap(),
-        };
+        let event = Event::BatchCanonicalUserCommandLog(&batch_payload);
 
         // Handle the event with the actor
         actors[0].handle_event(event).await;
@@ -379,10 +376,7 @@ mod canonical_user_command_log_persistence_tests {
         };
 
         // Serialize the batch payload into an event
-        let event = Event {
-            event_type: EventType::BatchCanonicalUserCommandLog,
-            payload: sonic_rs::to_string(&batch_payload).unwrap(),
-        };
+        let event = Event::BatchCanonicalUserCommandLog(&batch_payload);
 
         // Handle the batch event
         actors[0].handle_event(event).await;

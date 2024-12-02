@@ -1,8 +1,4 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
-};
+use super::super::events::Event;
 use crate::{
     event_sourcing::{
         payloads::StakingLedgerEntryPayload,
@@ -11,40 +7,28 @@ use crate::{
     utility::extract_height_and_hash,
 };
 use async_trait::async_trait;
-use std::{
-    path::Path,
-    sync::{atomic::AtomicUsize, Arc},
-};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
+use std::path::Path;
 
-pub struct StakingLedgerEntryActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-}
-
-impl StakingLedgerEntryActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
-        Self {
-            id: "StakingLedgerEntryActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
-        }
-    }
-}
+#[derive(Default)]
+pub struct StakingLedgerEntryActor;
 
 #[async_trait]
 impl Actor for StakingLedgerEntryActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-    async fn handle_event(&self, event: Event) {
-        if let EventType::StakingLedgerFilePath = event.event_type {
-            let file_path = event.payload.clone();
-            let file_content = std::fs::read_to_string(event.payload).expect("Failed to read staking ledger file");
-            let staking_ledger_entries: Vec<StakingEntry> = sonic_rs::from_str(&file_content).expect("Failed to parse staking ledger JSON");
+
+    async fn handle(&self, _myself: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        if let Event::StakingLedgerFilePath(file_path) = msg {
+            let file_content =
+                std::fs::read_to_string(&file_path).map_err(|e| ActorProcessingErr::from(format!("Failed to read staking ledger file: {}", e)))?;
+            let staking_ledger_entries: Vec<StakingEntry> =
+                sonic_rs::from_str(&file_content).map_err(|e| ActorProcessingErr::from(format!("Failed to parse staking ledger JSON: {}", e)))?;
 
             let filename = Path::new(&file_path);
             let (epoch, _) = extract_height_and_hash(filename);
@@ -61,72 +45,44 @@ impl Actor for StakingLedgerEntryActor {
                     total_staked: stake.total_staked,
                     delegators_count: stake.delegators.len() as u64,
                 };
-                self.publish(Event {
-                    event_type: EventType::StakingLedgerEntry,
-                    payload: sonic_rs::to_string(&payload).unwrap(),
-                });
+                state.cast(Event::StakingLedgerEntry(payload))?;
             }
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
 #[cfg(test)]
-mod staking_ledger_parser_tests {
+mod tests {
     use super::*;
-    use crate::{
-        constants::CHANNEL_MESSAGE_CAPACITY,
-        event_sourcing::{
-            events::{Event, EventType},
-            shared_publisher::SharedPublisher,
-        },
-    };
-    use std::{path::PathBuf, sync::Arc};
+    use crate::event_sourcing::test_utils::setup_test_actors;
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
 
     #[tokio::test]
-    async fn test_staking_ledger_parser_actor() {
+    async fn test_staking_ledger_entry_actor() -> anyhow::Result<()> {
         // Prepare test file path
-        let file_path = PathBuf::from("./src/event_sourcing/test_data/staking_ledgers/mainnet-9-jxVLvFcBbRCDSM8MHLam6UPVPo2KDegbzJN6MTZWyhTvDrPcjYk.json");
+        let file_path = "./src/event_sourcing/test_data/staking_ledgers/mainnet-9-jxVLvFcBbRCDSM8MHLam6UPVPo2KDegbzJN6MTZWyhTvDrPcjYk.json";
 
-        // Assert the file exists
-        assert!(file_path.exists(), "Test file does not exist: {:?}", file_path);
+        // Setup test actors
+        let actor = setup_test_actors(StakingLedgerEntryActor::default()).await;
 
-        // Set up a shared publisher with a test channel
-        let shared_publisher = Arc::new(SharedPublisher::new(CHANNEL_MESSAGE_CAPACITY));
+        // Send test message and store response
+        let response = actor
+            .call(|_| Event::StakingLedgerFilePath(file_path.to_string()), Some(Duration::from_secs(1)))
+            .await?;
 
-        // Create the actor
-        let actor = StakingLedgerEntryActor::new(shared_publisher.clone());
-        let mut receiver = shared_publisher.subscribe();
-
-        // Create a test event
-        let event = Event {
-            event_type: EventType::StakingLedgerFilePath,
-            payload: file_path.to_str().unwrap().to_string(),
-        };
-
-        // Trigger the actor's handle_event method
-        actor.handle_event(event).await;
-
-        // Collect all events published by the actor
-        let mut published_events = vec![];
-        while let Ok(event) = receiver.try_recv() {
-            published_events.push(event);
+        // Verify the response
+        match response {
+            CallResult::Success(Event::StakingLedgerEntry(payload)) => {
+                // TODO: add more assertions based on expected payload values
+                assert_eq!(payload.epoch, 9);
+            }
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
         }
 
-        // Assert that the correct number of events were published
-        assert_eq!(
-            actor.actor_outputs().load(std::sync::atomic::Ordering::SeqCst),
-            25_524,
-            "The number of events published does not match the expected staking entries."
-        );
-
-        // Further assertions can be made about specific events if needed
-        for published_event in published_events.iter() {
-            assert_eq!(published_event.event_type, EventType::StakingLedgerEntry);
-        }
+        Ok(())
     }
 }

@@ -1,41 +1,25 @@
-use super::super::{
-    events::{Event, EventType},
-    shared_publisher::SharedPublisher,
-    Actor,
+use crate::event_sourcing::{
+    events::Event,
+    payloads::{InternalCommandLogPayload, InternalCommandType},
 };
-use crate::event_sourcing::payloads::{InternalCommandLogPayload, InternalCommandType, MainnetBlockPayload};
-use async_trait::async_trait;
-use std::sync::{atomic::AtomicUsize, Arc};
+use ractor::{Actor, ActorProcessingErr, ActorRef};
 
-pub struct FeeTransferViaCoinbaseActor {
-    pub id: String,
-    pub shared_publisher: Arc<SharedPublisher>,
-    pub events_published: AtomicUsize,
-}
+#[derive(Default)]
+pub struct FeeTransferViaCoinbaseActor;
 
-impl FeeTransferViaCoinbaseActor {
-    pub fn new(shared_publisher: Arc<SharedPublisher>) -> Self {
-        Self {
-            id: "FeeTransferViaCoinbaseActor".to_string(),
-            shared_publisher,
-            events_published: AtomicUsize::new(0),
-        }
-    }
-}
-
-#[async_trait]
+#[async_trait::async_trait]
 impl Actor for FeeTransferViaCoinbaseActor {
-    fn id(&self) -> String {
-        self.id.clone()
+    type Msg = Event;
+    type State = ActorRef<Event>;
+    type Arguments = ActorRef<Event>;
+
+    async fn pre_start(&self, _myself: ActorRef<Self::Msg>, parent: Self::Arguments) -> Result<Self::State, ActorProcessingErr> {
+        Ok(parent)
     }
 
-    fn actor_outputs(&self) -> &AtomicUsize {
-        &self.events_published
-    }
-    async fn handle_event(&self, event: Event) {
-        match event.event_type {
-            EventType::MainnetBlock => {
-                let block_payload: MainnetBlockPayload = sonic_rs::from_str(&event.payload).unwrap();
+    async fn handle(&self, _: ActorRef<Self::Msg>, msg: Self::Msg, state: &mut Self::State) -> Result<(), ActorProcessingErr> {
+        match msg {
+            Event::MainnetBlock(block_payload) => {
                 if let Some(fee_transfers_via_coinbase) = block_payload.fee_transfer_via_coinbase {
                     for fee_transfer_via_coinbase in fee_transfers_via_coinbase.iter() {
                         let payload = InternalCommandLogPayload {
@@ -47,122 +31,106 @@ impl Actor for FeeTransferViaCoinbaseActor {
                             amount_nanomina: (fee_transfer_via_coinbase.fee * 1_000_000_000f64) as u64,
                             source: Some(block_payload.coinbase_receiver.to_string()),
                         };
-                        self.publish(Event {
-                            event_type: EventType::InternalCommandLog,
-                            payload: sonic_rs::to_string(&payload).unwrap(),
-                        });
+                        state.cast(Event::InternalCommandLog(payload))?;
                     }
                 }
             }
-            EventType::BerkeleyBlock => {
+            Event::BerkeleyBlock(_) => {
                 todo!("impl for berkeley block");
             }
             _ => {}
         }
-    }
-
-    fn publish(&self, event: Event) {
-        self.incr_event_published();
-        self.shared_publisher.publish(event);
+        Ok(())
     }
 }
 
-#[tokio::test]
-async fn test_handle_mainnet_block_event_publishes_fee_transfer_via_coinbase_event() {
+#[cfg(test)]
+mod tests {
     use super::*;
-    use crate::event_sourcing::{
-        events::{Event, EventType},
-        mainnet_block_models::FeeTransferViaCoinbase,
-        payloads::MainnetBlockPayload,
-    };
-    use std::sync::Arc;
+    use crate::event_sourcing::{mainnet_block_models::*, payloads::MainnetBlockPayload, test_utils::setup_test_actors};
+    use ractor::rpc::CallResult;
+    use tokio::time::Duration;
 
-    // Setup a shared publisher to capture published events
-    let shared_publisher = Arc::new(SharedPublisher::new(100));
-    let actor = FeeTransferViaCoinbaseActor::new(Arc::clone(&shared_publisher));
+    #[tokio::test]
+    async fn test_fee_transfer_via_coinbase_actor_handle_event() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(FeeTransferViaCoinbaseActor {}).await;
 
-    // Create a MainnetBlockPayload with a FeeTransferViaCoinbase
-    let block_payload = MainnetBlockPayload {
-        height: 10,
-        state_hash: "state_hash_example".to_string(),
-        timestamp: 123456789,
-        fee_transfer_via_coinbase: Some(vec![FeeTransferViaCoinbase {
-            receiver: "receiver_example".to_string(),
-            fee: 0.00005,
-        }]),
-        ..Default::default()
-    };
+        // MainnetBlockPayload with fee transfers via coinbase
+        let fee_transfers_via_coinbase = vec![
+            FeeTransferViaCoinbase {
+                receiver: "receiver_1".to_string(),
+                fee: 0.5,
+            },
+            FeeTransferViaCoinbase {
+                receiver: "receiver_2".to_string(),
+                fee: 0.3,
+            },
+        ];
 
-    // Serialize the MainnetBlockPayload to JSON for the event payload
-    let payload_json = sonic_rs::to_string(&block_payload).unwrap();
-    let event = Event {
-        event_type: EventType::MainnetBlock,
-        payload: payload_json,
-    };
+        let block_payload = MainnetBlockPayload {
+            height: 15,
+            state_hash: "state_hash_example".to_string(),
+            previous_state_hash: "previous_state_hash_example".to_string(),
+            last_vrf_output: "last_vrf_output_example".to_string(),
+            timestamp: 1615986540000,
+            coinbase_receiver: "coinbase_receiver".to_string(),
+            fee_transfer_via_coinbase: Some(fee_transfers_via_coinbase),
+            ..Default::default()
+        };
 
-    // Subscribe to the shared publisher to capture published events
-    let mut receiver = shared_publisher.subscribe();
+        // Send test message and store response
+        let response = actor.call(|_| Event::MainnetBlock(block_payload.clone()), Some(Duration::from_secs(1))).await?;
 
-    // Call handle_event to process the MainnetBlock event
-    actor.handle_event(event).await;
+        // Verify the fee transfers via coinbase
+        for fee_transfer in block_payload.fee_transfer_via_coinbase.unwrap().iter() {
+            match response {
+                CallResult::Success(Event::InternalCommandLog(command_payload)) => {
+                    assert_eq!(command_payload.internal_command_type, InternalCommandType::FeeTransferViaCoinbase);
+                    assert_eq!(command_payload.height, block_payload.height);
+                    assert_eq!(command_payload.state_hash, block_payload.state_hash);
+                    assert_eq!(command_payload.timestamp, block_payload.timestamp);
+                    assert_eq!(command_payload.recipient, fee_transfer.receiver);
+                    assert_eq!(command_payload.amount_nanomina, (fee_transfer.fee * 1_000_000_000f64) as u64);
+                    assert_eq!(command_payload.source, Some(block_payload.coinbase_receiver.to_string()));
+                }
+                CallResult::Success(_) => panic!("Received unexpected message type"),
+                CallResult::Timeout => panic!("Call timed out"),
+                CallResult::SenderError => panic!("Call failed"),
+            }
+        }
 
-    // Capture and verify the published FeeTransferViaCoinbase event
-    if let Ok(received_event) = receiver.recv().await {
-        assert_eq!(received_event.event_type, EventType::InternalCommandLog);
-
-        // Deserialize the payload of the FeeTransferViaCoinbase event
-        let fee_transfer_payload: InternalCommandLogPayload = sonic_rs::from_str(&received_event.payload).unwrap();
-
-        // Verify that the FeeTransferViaCoinbasePayload matches the expected values
-        assert_eq!(fee_transfer_payload.height, block_payload.height);
-        assert_eq!(fee_transfer_payload.state_hash, block_payload.state_hash);
-        assert_eq!(fee_transfer_payload.timestamp, block_payload.timestamp);
-        assert_eq!(fee_transfer_payload.recipient, "receiver_example");
-        assert_eq!(fee_transfer_payload.amount_nanomina, 50_000); // 0.00005 * 1_000_000_000
-    } else {
-        panic!("Did not receive expected FeeTransferViaCoinbase event from FeeTransferViaCoinbaseActor.");
+        Ok(())
     }
 
-    // Verify that the event count matches the number of events published
-    assert_eq!(actor.actor_outputs().load(Ordering::SeqCst), 1);
-}
+    #[tokio::test]
+    async fn test_fee_transfer_via_coinbase_actor_no_fee_transfers() -> anyhow::Result<()> {
+        // Setup test actors
+        let actor = setup_test_actors(FeeTransferViaCoinbaseActor {}).await;
 
-#[tokio::test]
-async fn test_handle_mainnet_block_event_without_fee_transfer_via_coinbase() {
-    use super::*;
-    use crate::event_sourcing::{
-        events::{Event, EventType},
-        payloads::MainnetBlockPayload,
-    };
-    use std::sync::Arc;
+        // MainnetBlockPayload with no fee transfers via coinbase
+        let block_payload = MainnetBlockPayload {
+            height: 15,
+            state_hash: "state_hash_example".to_string(),
+            previous_state_hash: "previous_state_hash_example".to_string(),
+            last_vrf_output: "last_vrf_output_example".to_string(),
+            timestamp: 1615986540000,
+            coinbase_receiver: "coinbase_receiver".to_string(),
+            fee_transfer_via_coinbase: None,
+            ..Default::default()
+        };
 
-    // Setup a shared publisher to capture published events
-    let shared_publisher = Arc::new(SharedPublisher::new(100));
-    let actor = FeeTransferViaCoinbaseActor::new(Arc::clone(&shared_publisher));
+        // Send test message and store response
+        let response = actor.call(|_| Event::MainnetBlock(block_payload.clone()), Some(Duration::from_secs(1))).await?;
 
-    // Create a MainnetBlockPayload without a FeeTransferViaCoinbase
-    let block_payload = MainnetBlockPayload {
-        height: 10,
-        state_hash: "state_hash_example".to_string(),
-        timestamp: 123456789,
-        fee_transfer_via_coinbase: None,
-        ..Default::default()
-    };
+        // Verify no InternalCommandLog event is generated
+        match response {
+            CallResult::Success(Event::MainnetBlock(_)) => {}
+            CallResult::Success(_) => panic!("Received unexpected message type"),
+            CallResult::Timeout => panic!("Call timed out"),
+            CallResult::SenderError => panic!("Call failed"),
+        }
 
-    // Serialize the MainnetBlockPayload to JSON for the event payload
-    let payload_json = sonic_rs::to_string(&block_payload).unwrap();
-    let event = Event {
-        event_type: EventType::MainnetBlock,
-        payload: payload_json,
-    };
-
-    // Subscribe to the shared publisher to capture published events
-    let mut receiver = shared_publisher.subscribe();
-
-    // Call handle_event to process the MainnetBlock event
-    actor.handle_event(event).await;
-
-    // Verify that no events were published
-    assert!(receiver.try_recv().is_err());
-    assert_eq!(actor.actor_outputs().load(Ordering::SeqCst), 0);
+        Ok(())
+    }
 }

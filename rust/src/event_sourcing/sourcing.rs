@@ -1,14 +1,10 @@
 use super::{
     genesis_ledger_models::GenesisLedger,
     payloads::{AccountingEntry, AccountingEntryAccountType, AccountingEntryType, DoubleEntryRecordPayload, GenesisBlockPayload, LedgerDestination},
-    shared_publisher::SharedPublisher,
 };
 use crate::{
     constants::FILE_PUBLISHER_ACTOR_ID,
-    event_sourcing::{
-        events::{Event, EventType},
-        payloads::ActorHeightPayload,
-    },
+    event_sourcing::{events::Event, payloads::ActorHeightPayload},
     utility::extract_height_and_hash,
 };
 use anyhow::Result;
@@ -23,49 +19,39 @@ use tokio::sync::broadcast;
 
 pub fn publish_genesis_block(shared_publisher: &Arc<SharedPublisher>) -> Result<()> {
     let payload = GenesisBlockPayload::new();
-    shared_publisher.publish(Event {
-        event_type: EventType::GenesisBlock,
-        payload: sonic_rs::to_string(&payload).unwrap(),
-    });
+    shared_publisher.publish(Event::GenesisBlock(payload));
 
     //B62qiy32p8kAKnny8ZFwoMhYpBppM1DWVCqAPBYNcXnsAHhnfAAuXgg
-    shared_publisher.publish(Event {
-        event_type: EventType::DoubleEntryTransaction,
-        payload: sonic_rs::to_string(&DoubleEntryRecordPayload {
-            height: 1,
-            state_hash: payload.state_hash,
-            ledger_destination: LedgerDestination::BlockchainLedger,
-            lhs: vec![AccountingEntry {
-                counterparty: "MagicMinaForBlock0".to_string(),
-                transfer_type: "BlockReward".to_string(),
-                account: "B62qiy32p8kAKnny8ZFwoMhYpBppM1DWVCqAPBYNcXnsAHhnfAAuXgg".to_string(),
-                entry_type: AccountingEntryType::Credit,
-                account_type: AccountingEntryAccountType::BlockchainAddress,
-                amount_nanomina: 1000,
-                timestamp: payload.unix_timestamp,
-            }],
-            rhs: vec![AccountingEntry {
-                counterparty: "B62qiy32p8kAKnny8ZFwoMhYpBppM1DWVCqAPBYNcXnsAHhnfAAuXgg".to_string(),
-                transfer_type: "BlockReward".to_string(),
-                account: "MagicMinaForBlock0".to_string(),
-                entry_type: AccountingEntryType::Debit,
-                account_type: AccountingEntryAccountType::VirtualAddess,
-                amount_nanomina: 1000,
-                timestamp: payload.unix_timestamp,
-            }],
-        })
-        .unwrap(),
-    });
+    shared_publisher.publish(Event::DoubleEntryTransaction(DoubleEntryRecordPayload {
+        height: 1,
+        state_hash: payload.state_hash,
+        ledger_destination: LedgerDestination::BlockchainLedger,
+        lhs: vec![AccountingEntry {
+            counterparty: "MagicMinaForBlock0".to_string(),
+            transfer_type: "BlockReward".to_string(),
+            account: "B62qiy32p8kAKnny8ZFwoMhYpBppM1DWVCqAPBYNcXnsAHhnfAAuXgg".to_string(),
+            entry_type: AccountingEntryType::Credit,
+            account_type: AccountingEntryAccountType::BlockchainAddress,
+            amount_nanomina: 1000,
+            timestamp: payload.unix_timestamp,
+        }],
+        rhs: vec![AccountingEntry {
+            counterparty: "B62qiy32p8kAKnny8ZFwoMhYpBppM1DWVCqAPBYNcXnsAHhnfAAuXgg".to_string(),
+            transfer_type: "BlockReward".to_string(),
+            account: "MagicMinaForBlock0".to_string(),
+            entry_type: AccountingEntryType::Debit,
+            account_type: AccountingEntryAccountType::VirtualAddess,
+            amount_nanomina: 1000,
+            timestamp: payload.unix_timestamp,
+        }],
+    }));
 
     Ok(())
 }
 
 pub fn publish_genesis_ledger_double_entries(shared_publisher: &Arc<SharedPublisher>) -> Result<()> {
     for de in get_genesis_ledger().get_accounting_double_entries() {
-        shared_publisher.publish(Event {
-            event_type: EventType::DoubleEntryTransaction,
-            payload: sonic_rs::to_string(&de).unwrap(),
-        });
+        shared_publisher.publish(Event::DoubleEntryTransaction(de));
     }
 
     Ok(())
@@ -73,10 +59,7 @@ pub fn publish_genesis_ledger_double_entries(shared_publisher: &Arc<SharedPublis
 
 pub fn publish_exempt_accounts(shared_publisher: &Arc<SharedPublisher>) -> Result<()> {
     for account in get_genesis_ledger().get_accounts() {
-        shared_publisher.publish(Event {
-            event_type: EventType::PreExistingAccount,
-            payload: account,
-        });
+        shared_publisher.publish(Event::PreExistingAccount(account));
     }
 
     Ok(())
@@ -186,10 +169,7 @@ async fn get_root_file(blocks_dir: &Path, root_height: u64, root_state_hash: &st
 }
 
 async fn publish_root_file(shared_publisher: &Arc<SharedPublisher>, root_file: PathBuf) -> Result<()> {
-    shared_publisher.publish(Event {
-        event_type: EventType::PrecomputedBlockPath,
-        payload: root_file.to_str().unwrap().to_string(),
-    });
+    shared_publisher.publish(Event::PrecomputedBlockPath(root_file.to_str().unwrap().to_string()));
     tokio::time::sleep(Duration::from_secs(1)).await;
     Ok(())
 }
@@ -199,8 +179,8 @@ async fn handle_height_spread_event(subscriber: &mut broadcast::Receiver<Event>)
 
     // Drain events with a timeout and keep the highest HeightSpread value
     while let Ok(Ok(event)) = tokio::time::timeout(std::time::Duration::from_millis(1), subscriber.recv()).await {
-        if event.event_type == EventType::HeightSpread {
-            let current_spread = event.payload.parse().unwrap_or(0);
+        if event == Event::HeightSpread {
+            let current_spread = event.parse().unwrap_or(0);
             // Keep the highest spread
             if current_spread > height_spread {
                 height_spread = current_spread;
@@ -212,23 +192,16 @@ async fn handle_height_spread_event(subscriber: &mut broadcast::Receiver<Event>)
 }
 
 async fn publish_block_path(shared_publisher: &Arc<SharedPublisher>, path: &Path) -> Result<()> {
-    shared_publisher.publish(Event {
-        event_type: EventType::PrecomputedBlockPath,
-        payload: path.to_str().map(ToString::to_string).unwrap_or_default(),
-    });
+    shared_publisher.publish(Event::PrecomputedBlockPath(path.to_str().map(ToString::to_string).unwrap_or_default()));
     Ok(())
 }
 
 async fn publish_actor_height(shared_publisher: &Arc<SharedPublisher>, path: &Path) -> Result<()> {
     let (height, _) = extract_height_and_hash(path);
-    shared_publisher.publish(Event {
-        event_type: EventType::ActorHeight,
-        payload: sonic_rs::to_string(&ActorHeightPayload {
-            actor: FILE_PUBLISHER_ACTOR_ID.to_string(),
-            height: height as u64,
-        })
-        .unwrap(),
-    });
+    shared_publisher.publish(Event::ActorHeight(ActorHeightPayload {
+        actor: FILE_PUBLISHER_ACTOR_ID.to_string(),
+        height: height as u64,
+    }));
     Ok(())
 }
 
@@ -245,7 +218,7 @@ pub fn get_millisecond_pause_from_rate() -> u64 {
 #[cfg(test)]
 mod sourcing_tests {
     use super::*;
-    use crate::event_sourcing::events::EventType;
+    use crate::event_sourcing::events::Event;
     use futures::lock::Mutex;
     use tokio::sync::broadcast;
 
@@ -261,10 +234,10 @@ mod sourcing_tests {
         publish_genesis_block(&shared_publisher).unwrap();
 
         let genesis_block_event = receiver.recv().await.unwrap();
-        assert_eq!(genesis_block_event.event_type, EventType::GenesisBlock);
+        assert_eq!(genesis_block_event.event_type, Event::GenesisBlock);
 
         let transaction_event = receiver.recv().await.unwrap();
-        assert_eq!(transaction_event.event_type, EventType::DoubleEntryTransaction);
+        assert_eq!(transaction_event.event_type, Event::DoubleEntryTransaction);
     }
 
     #[tokio::test]
@@ -275,7 +248,7 @@ mod sourcing_tests {
         publish_genesis_ledger_double_entries(&shared_publisher).unwrap();
 
         let event = receiver.recv().await.unwrap();
-        assert_eq!(event.event_type, EventType::DoubleEntryTransaction);
+        assert_eq!(event.event_type, Event::DoubleEntryTransaction);
     }
 
     #[tokio::test]
@@ -286,7 +259,7 @@ mod sourcing_tests {
         publish_exempt_accounts(&shared_publisher).unwrap();
 
         let event = receiver.recv().await.unwrap();
-        assert_eq!(event.event_type, EventType::PreExistingAccount);
+        assert_eq!(event.event_type, Event::PreExistingAccount);
         assert_eq!(event.payload, "B62qmqMrgPshhHKLJ7DqWn1KeizEgga5MuGmWb2bXajUnyivfeMW6JE");
     }
 
@@ -313,7 +286,7 @@ mod sourcing_tests {
         // Verify the root block file event is published
         if let Ok(event) = tokio::time::timeout(std::time::Duration::from_secs(2), receiver.recv()).await {
             let event = event.unwrap();
-            assert_eq!(event.event_type, EventType::PrecomputedBlockPath);
+            assert_eq!(event.event_type, Event::PrecomputedBlockPath);
             assert!(event.payload.contains("mainnet-5-3NKQUoBfi9vkbuqtDJmSEYBQrcSo4GjwG8bPCiii4yqM8AxEQvtY.json"));
         } else {
             panic!("Did not receive the expected PrecomputedBlockPath event for the root block.");
@@ -332,23 +305,11 @@ mod sourcing_tests {
         // Spawn a task to publish events to the channel
         tokio::spawn(async move {
             // Simulate sending HeightSpread events
-            tx.send(Event {
-                event_type: EventType::HeightSpread,
-                payload: "50".to_string(),
-            })
-            .unwrap();
+            tx.send(Event::HeightSpread("50"));
             tokio::time::sleep(Duration::from_millis(50)).await; // Simulate a delay
-            tx.send(Event {
-                event_type: EventType::HeightSpread,
-                payload: "30".to_string(),
-            })
-            .unwrap();
+            tx.send(Event::HeightSpread("30"));
             tokio::time::sleep(Duration::from_millis(50)).await;
-            tx.send(Event {
-                event_type: EventType::HeightSpread,
-                payload: "80".to_string(),
-            })
-            .unwrap();
+            tx.send(Event::HeightSpread("80"));
         });
 
         // Call the function to handle events and keep the highest spread
