@@ -45,6 +45,7 @@
         [
           cargo-nextest
           clang
+          just
           libclang.lib
           pkg-config
           rustPlatform.bindgenHook
@@ -83,7 +84,6 @@
           openssh # Needed by 'git' but not declared.
           rclone
           ruby
-          # rubyPackages.standard
           rubyPackages.rspec
           rust
           shellcheck
@@ -124,7 +124,6 @@
             };
 
             pname = cargo-toml.package.name;
-
             version = cargo-toml.package.version;
 
             src = lib.cleanSourceWith {
@@ -140,22 +139,21 @@
             cargoLock = {lockFile = ./rust/Cargo.lock;};
 
             nativeBuildInputs = buildDependencies;
-
             buildInputs = runtimeDependencies;
 
-            # This is equivalent to `git rev-parse --short=8 HEAD`
-            gitCommitHash = builtins.substring 0 8 (self.rev or "dev");
-
             postPatch = ''ln -s "${./rust/Cargo.lock}" Cargo.lock'';
-            preBuild = ''
-              export GIT_COMMIT_HASH=${gitCommitHash}
-              cd rust
+
+            preCheck = ''
+              just lint
             '';
+
             checkPhase = ''
-              set -ex
-              cargo clippy --all-targets --all-features -- -D warnings
-              cargo nextest run --release
+              just test-unit
             '';
+
+            doCheck = true;
+            dontStrip = true;
+
             preInstall = "mkdir -p $out/var/log/mina-indexer";
           };
 

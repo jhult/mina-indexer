@@ -76,7 +76,7 @@ audit:
   @echo "--- Performing Cargo audit"
   cd rust && time cargo audit
 
-lint:
+lint-ops:
   @echo "--- Linting ops scripts"
   ruby -cw ops/*.rb
   # TODO: find another package for Ruby linting
@@ -84,6 +84,8 @@ lint:
   shellcheck tests/regression.bash
   @echo "--- Linting Nix configs"
   alejandra --check flake.nix ops/mina/mina_txn_hasher.nix
+
+lint-rust:
   @echo "--- Linting Rust code"
   cd rust && time cargo clippy --all-targets --all-features \
     -- \
@@ -101,8 +103,12 @@ lint:
   # -Dclippy::cargo_common_metadata
   # -Dclippy::pedantic
   # -Dclippy::wildcard_imports
+
+lint-deps:
   @echo "--- Linting Cargo dependencies"
   cd rust && cargo machete
+
+lint: lint-rust lint-ops lint-deps
 
 format:
   cd rust && cargo {{nightly_if_required}} fmt --all > /dev/null 2>&1
@@ -207,15 +213,18 @@ dev-continue subtest='': debug-build
 # Unit tests
 #
 
-# Run unit debug tests
-test-unit-tier1:
+test-unit: test-unit-rust test-unit-ops
+
+test-unit-ops:
   @echo "--- Invoking 'rspec ops/spec'"
   rspec ops/spec/*_spec.rb
-  @echo "--- Invoking 'cargo nextest'"
-  cd rust && time cargo nextest run --run-ignored all
 
-# Lint & run debug tier 1 unit test(s)
-test-unit-tier1-dev test='': lint
+test-unit-rust:
+  @echo "--- Invoking 'cargo nextest'"
+  cd rust && time cargo nextest run --release
+
+# Lint & run debug unit test(s)
+test-unit-dev test='--run-ignored all': test-unit-ops
   @echo "--- Invoking 'cargo nextest'"
   cd rust && time cargo nextest run {{test}}
 
@@ -239,7 +248,7 @@ test-unit-dev:
 #
 
 # Run the 1st tier of tests.
-tier1: tier1-prereqs lint test-unit-tier1
+tier1: tier1-prereqs lint test-unit-dev
   @echo "--- Performing tier 1 regression tests"
   time {{REGRESSION_TEST}} {{DEBUG_MODE}} \
     ipc_is_available_immediately \
