@@ -1599,6 +1599,10 @@ impl BlockStore for IndexerStore {
     }
 }
 
+fn is_genesis_hash(hash: &StateHash) -> bool {
+    hash.0 == MAINNET_GENESIS_HASH || hash.0 == HARDFORK_GENESIS_HASH
+}
+
 fn block_cmp(db: &IndexerStore, a: &StateHash, b: &StateHash) -> std::cmp::Ordering {
     use std::cmp::Ordering;
     let a_canonicity = db.get_block_canonicity(a).ok().flatten();
